@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.mware</groupId>
+        <artifactId>ma-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>auth</artifactId>
+    <packaging>pom</packaging>
+    <name>auth</name>
+    <description>登录 / JWT / 权限（双 token 登录：TODO）</description>
+
+    <modules>
+        <module>auth.web</module>
+        <module>auth.biz</module>
+        <module>auth.domain</module>
+        <module>auth.dto</module>
+        <module>auth.mapper</module>
+    </modules>
+
+    <!-- 内部模块版本管理：子模块之间可无版本引用（复用模板） -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.mware</groupId>
+                <artifactId>auth.web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mware</groupId>
+                <artifactId>auth.biz</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mware</groupId>
+                <artifactId>auth.domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mware</groupId>
+                <artifactId>auth.dto</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mware</groupId>
+                <artifactId>auth.mapper</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>

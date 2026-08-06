@@ -1,0 +1,43 @@
+server:
+  port: 9001
+
+spring:
+  application:
+    name: auth-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+  datasource:
+    url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/middleware_arena?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: ${MYSQL_PASSWORD:root123}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 3s
+
+# MyBatis-Plus：实体默认驼峰 ↔ 下划线自动映射；生产可去掉 SQL 日志
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+ma:
+  jwt:
+    # 生产环境务必用环境变量覆盖
+    secret: ${MA_JWT_SECRET:middleware-arena-default-secret-key-please-override-2026}
+    access-ttl-ms: 900000        # 15 分钟
+    refresh-ttl-ms: 604800000    # 7 天（双 token 接入后使用）
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html

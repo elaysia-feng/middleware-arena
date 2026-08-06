@@ -1,0 +1,25 @@
+server:
+  port: 9007
+
+spring:
+  application:
+    name: storage-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+  # TODO[Seata AT]：接入 MySQL 时启用数据源，并把 storage.mapper 依赖引入 biz/web
+  # datasource:
+  #   url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/middleware_arena?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+  #   username: root
+  #   password: root123
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html

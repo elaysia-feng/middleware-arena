@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.mware</groupId>
+        <artifactId>auth</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>auth.biz</artifactId>
+    <name>auth.biz</name>
+    <description>业务逻辑</description>
+
+    <dependencies>
+        <!-- @Service / @Transactional 等注解：之前由共享库传递引入，现显式声明 -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>auth.domain</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>auth.dto</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>auth.mapper</artifactId>
+        </dependency>
+        <!-- 共享库：JwtUtil（签发/解析 access token）+ ApiException（业务异常） -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>base.jwt</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>base.web</artifactId>
+        </dependency>
+        <!-- BCrypt 密码加密（spring-security-crypto 单独模块，不含完整 Security 过滤器链） -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
+        <!-- Redis：refreshToken 存储 / 轮换 / 登出拉黑 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

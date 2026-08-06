@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>性能监控 - Middleware Arena</title>
+<style>
+:root{
+  --bg:#f5f7fb;--panel:#fff;--line:#e7ebf2;--text:#182033;--muted:#7b879d;
+  --primary:#4f6df5;--primary2:#7b61ff;--green:#16a36f;--orange:#f59e42;
+  --red:#e75c5c;--nav:#111d32;--nav-hover:#1b2b47;--shadow:0 10px 28px rgba(27,42,74,.08);
+}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,"PingFang SC","Microsoft YaHei",Arial,sans-serif;background:var(--bg);color:var(--text)}
+a{text-decoration:none;color:inherit}button,input,select{font:inherit}
+.app{min-height:100vh;display:grid;grid-template-columns:240px minmax(0,1fr)}
+.sidebar{position:sticky;top:0;height:100vh;background:linear-gradient(180deg,#111d32,#0b1424);padding:18px 14px;color:#dbe5f5;display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:11px;padding:8px 10px 22px;font-size:20px;font-weight:800;color:#fff}
+.logo{width:40px;height:40px;border-radius:13px;background:linear-gradient(135deg,#4ec4ff,#7a5cff);display:grid;place-items:center}
+.nav-title{padding:10px 12px 6px;font-size:11px;color:#71819c;text-transform:uppercase;letter-spacing:.12em}
+.nav{display:grid;gap:5px}.nav a{padding:11px 12px;border-radius:11px;display:flex;align-items:center;gap:11px;color:#cad6e8}
+.nav a:hover,.nav a.active{background:var(--nav-hover);color:#fff}.nav a.active{box-shadow:inset 3px 0 0 #6d7cff}
+.side-bottom{margin-top:auto;border:1px solid rgba(255,255,255,.08);background:linear-gradient(145deg,#1b3151,#182844);padding:15px;border-radius:15px;font-size:12px;line-height:1.7}
+.main{min-width:0}.topbar{height:70px;background:rgba(255,255,255,.94);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:20}
+.search{width:min(460px,46vw);height:40px;border:1px solid var(--line);border-radius:12px;padding:0 14px;background:#fafbfe}
+.top-actions{display:flex;align-items:center;gap:10px}.avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#ffc76a,#ff7a8a);display:grid;place-items:center;font-weight:800}
+.page{padding:24px}.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}.page-head h1{margin:0 0 6px;font-size:28px}.muted{color:var(--muted)}
+.btn{border:1px solid var(--line);background:#fff;color:var(--text);padding:10px 14px;border-radius:11px;font-weight:650;cursor:pointer;display:inline-block}
+.btn.primary{background:linear-gradient(135deg,var(--primary),var(--primary2));border-color:transparent;color:#fff}.btn.soft{background:#eef2ff;color:#4a5ac7;border-color:#e4e8ff}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow)}
+.panel{padding:18px}.panel h3{margin:0 0 14px;font-size:17px}
+.grid{display:grid;gap:16px}.cols-2{grid-template-columns:1.35fr 1fr}.cols-3{grid-template-columns:repeat(3,1fr)}.cols-4{grid-template-columns:repeat(4,1fr)}
+.hero{padding:20px}.hero-top{display:flex;justify-content:space-between;gap:20px}.hero-title{display:flex;gap:14px}
+.scene-icon{width:76px;height:76px;border-radius:19px;background:linear-gradient(145deg,#204d85,#4f6df5);display:grid;place-items:center;color:#fff;font-size:32px}
+.tag{display:inline-block;font-size:12px;padding:6px 9px;border-radius:999px;background:#f0f3ff;color:#4f5fb6;border:1px solid #e0e5ff;margin:3px}
+.resource-row,.metric-row{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-top:16px}
+.resource{padding:12px;border-radius:12px;border:1px solid var(--line);background:#fbfcff}.resource span{display:block;color:var(--muted);font-size:12px;margin-top:4px}
+.metric{padding:17px}.metric small{display:block;color:var(--muted)}.metric strong{display:block;font-size:27px;margin-top:7px}
+.blue{color:var(--primary)}.green{color:var(--green)}.purple{color:var(--primary2)}.orange{color:var(--orange)}.red{color:var(--red)}
+.table{width:100%;border-collapse:collapse;font-size:14px}.table th,.table td{padding:13px 10px;text-align:left;border-bottom:1px solid #edf0f5}.table th{font-size:12px;color:var(--muted)}
+.badge{display:inline-block;padding:5px 8px;border-radius:8px;font-size:12px}.ok{background:#eaf9f3;color:#177c59}.wait{background:#fff4dc;color:#976814}.run{background:#eaf0ff;color:#3b58bd}.fail{background:#fff0f0;color:#bc4545}
+.chart{height:250px;border-radius:14px;background:linear-gradient(#edf1f6 1px,transparent 1px),linear-gradient(90deg,#edf1f6 1px,transparent 1px);background-size:100% 25%,12.5% 100%;overflow:hidden}.chart svg{width:100%;height:100%}
+.evidence{display:grid;gap:10px}.evidence-item{padding:12px;border:1px solid #e6e9f0;background:#fff;border-radius:11px}
+.scene-card{padding:18px}.scene-card h3{margin:14px 0 8px}.scene-card p{color:#5f6b7f;line-height:1.65}
+.code-shell{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:620px;overflow:hidden}.file-tree{background:#151f2f;color:#d9e4f2;padding:16px}.file-tree h3{margin:0 0 14px;color:#fff}.file{padding:7px 8px;border-radius:7px;font-size:13px}.file.active{background:#2a3850;color:#fff}
+.editor{background:#0f1724;color:#dbe6f5;display:flex;flex-direction:column}.editor-top{height:48px;padding:0 16px;border-bottom:1px solid #263449;display:flex;align-items:center;justify-content:space-between}.code{padding:20px;margin:0;white-space:pre;overflow:auto;font-family:Consolas,monospace;font-size:13px;line-height:1.65;flex:1}
+.kw{color:#c792ea}.type{color:#82aaff}.str{color:#c3e88d}.fn{color:#89ddff}
+.form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.field label{display:block;color:var(--muted);font-size:13px;margin-bottom:7px}.field input,.field select{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.progress{height:10px;border-radius:999px;background:#edf1f7;overflow:hidden}.progress>div{height:100%;background:linear-gradient(90deg,var(--primary),var(--primary2));transition:width .35s}
+.post{padding:18px}.post h3{margin:12px 0 8px}.post p{color:#59657a;line-height:1.7}.post-actions{display:flex;gap:16px;border-top:1px solid var(--line);margin-top:12px;padding-top:12px;color:#68758b}
+@media(max-width:1100px){.cols-2,.cols-3,.cols-4{grid-template-columns:1fr}.resource-row,.metric-row{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:760px){.app{grid-template-columns:1fr}.sidebar{height:auto;position:relative}.nav{grid-template-columns:repeat(2,1fr)}.page{padding:14px}.resource-row,.metric-row,.form-grid{grid-template-columns:1fr 1fr}.code-shell{grid-template-columns:1fr}.file-tree{display:none}.topbar{padding:0 12px}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><div class="logo">M</div><div>Middleware<br>Arena</div></div>
+  <div class="nav-title">工作台</div>
+  <nav class="nav"><a class="" href="index.html"><span>⌂</span>实验总览</a><a class="" href="scenes.html"><span>◫</span>实验场景</a><a class="" href="editor.html"><span>⌘</span>代码实验</a><a class="" href="tasks.html"><span>▣</span>压测任务</a><a class="active" href="monitor.html"><span>⌁</span>性能监控</a><a class="" href="report.html"><span>✦</span>AI 分析</a><a class="" href="community.html"><span>◉</span>实验社区</a></nav>
+  <div class="side-bottom"><strong>中间件性能实验平台</strong><br>Spring Cloud · Redis · RabbitMQ · Seata · Elasticsearch<br><span class="tag">v2.1 Standalone</span></div>
+</aside>
+<main class="main">
+<header class="topbar">
+  <input class="search" placeholder="搜索实验、场景、用户">
+  <div class="top-actions"><button class="btn primary">＋ 新建实验</button><span>🔔</span><div class="avatar">冯</div></div>
+</header>
+<div class="page">
+<div class="page-head"><div><h1>性能监控</h1><div class="muted">实时查看 JVM、数据库、缓存和消息队列指标</div></div><select class="btn"><option>实验 #EXP-1028</option></select></div>
+<div class="grid cols-4"><div class="card metric"><small>实时 QPS</small><strong class="green">1084</strong></div><div class="card metric"><small>P95 延迟</small><strong class="purple">268ms</strong></div><div class="card metric"><small>JVM 堆使用</small><strong class="orange">78%</strong></div><div class="card metric"><small>错误率</small><strong class="red">0.6%</strong></div></div>
+<div class="grid cols-2" style="margin-top:16px"><div class="card panel"><h3>QPS 与延迟趋势</h3><div class="chart"><svg viewBox="0 0 800 250" preserveAspectRatio="none"><polyline fill="none" stroke="#16a36f" stroke-width="4" points="20,210 110,182 200,152 290,130 380,90 470,65 560,58 650,48 780,52"/><polyline fill="none" stroke="#7b61ff" stroke-width="4" points="20,70 110,76 200,88 290,96 380,116 470,140 560,158 650,172 780,168"/></svg></div></div><div class="card panel"><h3>组件资源占用</h3><table class="table"><tr><th>组件</th><th>CPU</th><th>内存</th><th>状态</th></tr><tr><td>order-service</td><td>72%</td><td>401MB</td><td><span class="badge ok">正常</span></td></tr><tr><td>Redis</td><td>24%</td><td>91MB</td><td><span class="badge ok">正常</span></td></tr><tr><td>MySQL</td><td>64%</td><td>612MB</td><td><span class="badge wait">连接池高</span></td></tr><tr><td>RabbitMQ</td><td>39%</td><td>418MB</td><td><span class="badge wait">积压 1260</span></td></tr></table></div></div>
+</div>
+</main>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded",()=>{
+  document.querySelectorAll("[data-like]").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      const active=btn.classList.toggle("liked");
+      let count=Number(btn.dataset.count||0)+(active?1:-1);
+      btn.dataset.count=count;
+      btn.textContent=(active?"已点赞 ":"点赞 ")+count;
+    });
+  });
+  const run=document.querySelector("[data-run]");
+  if(run){
+    run.addEventListener("click",()=>{
+      const bar=document.querySelector("[data-progress]");
+      const status=document.querySelector("[data-status]");
+      const steps=[[12,"正在构建目标服务..."],[30,"正在启动 Redis、MySQL、RabbitMQ..."],[52,"正在执行阶梯压测..."],[76,"正在采集 JVM 与中间件指标..."],[92,"Python Agent 正在分析..."],[100,"实验完成，报告已生成。"]];
+      let i=0;run.disabled=true;run.textContent="运行中";
+      const timer=setInterval(()=>{
+        bar.style.width=steps[i][0]+"%";status.textContent=steps[i][1];i++;
+        if(i===steps.length){clearInterval(timer);run.disabled=false;run.textContent="再次运行";}
+      },700);
+    });
+  }
+});
+</script>
+</body></html>

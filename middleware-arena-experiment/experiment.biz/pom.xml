@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.mware</groupId>
+        <artifactId>experiment</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>experiment.biz</artifactId>
+    <name>experiment.biz</name>
+    <description>实验业务逻辑</description>
+
+    <dependencies>
+        <!-- @Service / @Transactional 等注解：之前由共享库传递引入，现显式声明 -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>experiment.domain</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>experiment.dto</artifactId>
+        </dependency>
+        <!-- TODO：接入数据源时把 experiment.mapper 依赖引入 -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

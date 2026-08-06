@@ -1,0 +1,12 @@
+-- middleware-arena-order 初始化 DDL
+-- TODO[Seata 分布式事务]：接入 MySQL 时执行此脚本建表
+
+-- CREATE TABLE `order` (
+--     id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '订单 ID',
+--     product_id  BIGINT       NOT NULL COMMENT '商品 ID',
+--     quantity    INT          NOT NULL COMMENT '购买数量',
+--     amount      DECIMAL(10,2) NOT NULL COMMENT '订单金额',
+--     status      VARCHAR(32)  NOT NULL DEFAULT 'CREATED' COMMENT '订单状态: CREATED/PAID/CANCELLED',
+--     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+--     PRIMARY KEY (id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单表';

@@ -1,0 +1,83 @@
+# ========== 凭据与本地配置 ==========
+.env
+.env.*
+!.env.example
+.env.local
+.env.*.local
+*.local.env
+**/config.env
+
+# ========== Java / Maven ==========
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.iml
+*.flattened-pom.xml
+dependency-reduced-pom.xml
+
+# ========== Python ==========
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.eggs/
+.tox/
+.nox/
+
+# ========== 构建产物（任意层级） ==========
+dist/
+build/
+coverage/
+release/
+
+# ========== Node / Electron / Vue ==========
+node_modules/
+desktop/node_modules/
+desktop/out/
+desktop/.vite/
+desktop/release/
+*.tsbuildinfo
+.npm/
+.vite/
+.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ========== 运行期 / 适配器本地状态 ==========
+logs/
+*.log
+adapters/codex/notify_debug.log
+adapters/claude-code/session_titles.json
+adapters/codex/forward_target.json
+
+# ========== 一次性工作产物（bug 扫描报告等，不入库） ==========
+bugs-scan-*.md
+
+# ========== 编辑器 / IDE ==========
+.idea/
+.vscode/
+.cursor/
+*.swp
+*~
+~$*
+
+# ========== 系统临时 ==========
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.bak
+*.tmp
+
+# ========== 本地工具状态 ==========
+.omc/
