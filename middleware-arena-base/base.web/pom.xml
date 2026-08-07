@@ -21,6 +21,18 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- TTL：UserContext 跨线程池透传（配合 -javaagent 或 TtlExecutors 生效） -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>transmittable-thread-local</artifactId>
+        </dependency>
+
+        <!-- 内部鉴权：InternalAuthSigner 验签 + InternalAuthProperties 配置（由 base.jwt 提供） -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>base.jwt</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

@@ -19,6 +19,11 @@
             <groupId>com.mware</groupId>
             <artifactId>order.biz</artifactId>
         </dependency>
+        <!-- order.config：Redis / Caffeine 配置类需随 web 模块被 Spring 扫描 -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>order.config</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.mware</groupId>
             <artifactId>base.web</artifactId>

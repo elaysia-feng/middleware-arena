@@ -3,11 +3,11 @@ package com.mware.auth.biz.impl;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.mware.auth.biz.AuthService;
 import com.mware.auth.domain.User;
-import com.mware.auth.dto.LoginRequest;
-import com.mware.auth.dto.LoginResponse;
-import com.mware.auth.dto.RefreshRequest;
-import com.mware.auth.dto.RegisterRequest;
-import com.mware.auth.dto.UserInfoResponse;
+import com.mware.auth.dto.request.LoginRequest;
+import com.mware.auth.dto.request.RefreshRequest;
+import com.mware.auth.dto.request.RegisterRequest;
+import com.mware.auth.dto.response.LoginResponse;
+import com.mware.auth.dto.response.UserInfoResponse;
 import com.mware.auth.mapper.UserMapper;
 import com.mware.common.jwt.JwtProperties;
 import com.mware.common.jwt.JwtUtil;
@@ -52,11 +52,12 @@ public class AuthServiceImpl implements AuthService {
             throw new ApiException(400, "用户名已存在");
         }
 
-        User user = new User();
-        user.setUsername(request.getUsername());
-        user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setNickname(request.getNickname() == null || request.getNickname().isBlank()
-                ? request.getUsername() : request.getNickname());
+        User user = User.builder()
+                .username(request.getUsername())
+                .password(passwordEncoder.encode(request.getPassword()))
+                .nickname(request.getNickname() == null || request.getNickname().isBlank()
+                        ? request.getUsername() : request.getNickname())
+                .build();
         userMapper.insert(user);
 
         return issueTokens(user);
@@ -102,7 +103,11 @@ public class AuthServiceImpl implements AuthService {
         if (user == null) {
             throw new ApiException(401, "用户不存在");
         }
-        return new UserInfoResponse(user.getId(), user.getUsername(), user.getNickname());
+        return UserInfoResponse.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .nickname(user.getNickname())
+                .build();
     }
 
     /** 解析并校验 accessToken，非法 / 过期统一抛 401 */
@@ -125,6 +130,9 @@ public class AuthServiceImpl implements AuthService {
                 String.valueOf(user.getId()),
                 Duration.ofMillis(jwtProps.getRefreshTtlMs()));
 
-        return new LoginResponse(accessToken, refreshToken);
+        return LoginResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .build();
     }
 }

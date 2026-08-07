@@ -20,6 +20,7 @@
         <module>notification.biz</module>
         <module>notification.domain</module>
         <module>notification.dto</module>
+        <module>notification.mapper</module>
     </modules>
 
     <dependencyManagement>
@@ -42,6 +43,11 @@
             <dependency>
                 <groupId>com.mware</groupId>
                 <artifactId>notification.dto</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mware</groupId>
+                <artifactId>notification.mapper</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

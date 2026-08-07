@@ -28,7 +28,15 @@
             <groupId>com.mware</groupId>
             <artifactId>experiment.dto</artifactId>
         </dependency>
-        <!-- TODO：接入数据源时把 experiment.mapper 依赖引入 -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>experiment.mapper</artifactId>
+        </dependency>
+        <!-- 错误码 / ApiException（base.web 提供） -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>base.web</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Bean;
  * TODO[双 token 登录]：接入刷新/黑名单后，此配置可扩展 refresh token Bean。
  */
 @AutoConfiguration
-@EnableConfigurationProperties(JwtProperties.class)
+@EnableConfigurationProperties({JwtProperties.class, InternalAuthProperties.class})
 public class JwtAutoConfiguration {
 
     @Bean

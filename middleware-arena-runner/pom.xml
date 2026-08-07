@@ -20,6 +20,7 @@
         <module>runner.biz</module>
         <module>runner.domain</module>
         <module>runner.dto</module>
+        <module>runner.mapper</module>
     </modules>
 
     <dependencyManagement>
@@ -42,6 +43,11 @@
             <dependency>
                 <groupId>com.mware</groupId>
                 <artifactId>runner.dto</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mware</groupId>
+                <artifactId>runner.mapper</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

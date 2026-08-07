@@ -15,6 +15,7 @@
     <description>实验请求 / 响应对象</description>
 
     <dependencies>
+        <!-- 纯 DTO：实体已移至 experiment.domain，仅需要 lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

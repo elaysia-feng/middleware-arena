@@ -1,14 +1,33 @@
 package com.mware.notification.biz;
 
+import com.mware.notification.dto.request.NotificationRequest;
+import com.mware.notification.dto.response.NotificationResponse;
+
+import java.util.List;
+
 /**
  * 通知业务接口。
  * <p>
- * TODO：
- *   - RabbitMQ 消费：监听 experiment.completed 队列，收到消息后创建站内通知
- *   - 站内信 CRUD：创建 / 已读标记 / 分页列表 / 未读数
- *   - WebSocket / SSE 推送：实时推送新通知到前端
- *   - 通知类型：实验完成 / 系统公告 / @提醒 等
+ * 方法签名已定，具体实现留待接入 RabbitMQ / SSE / 持久化后补齐。
+ * Service 层直接面向 DTO（XxxRequest / XxxResponse），domain 实体仅存在于 Service/mapper 内部。
  */
 public interface NotificationService {
 
+    /** RabbitMQ 消费：experiment.completed 事件 → 创建站内通知 */
+    void handleExperimentCompleted(String message);
+
+    /** 创建站内通知（userId 从 UserContext 取，不信任客户端） */
+    NotificationResponse createNotification(NotificationRequest request);
+
+    /** 标记已读 */
+    void markRead(Long notificationId, Long userId);
+
+    /** 分页获取当前用户通知列表 */
+    List<NotificationResponse> pageNotifications(Long userId, int page, int size);
+
+    /** 未读数量 */
+    long unreadCount(Long userId);
+
+    /** 实时推送新通知（SSE / WebSocket） */
+    void push(Long userId, NotificationRequest request);
 }

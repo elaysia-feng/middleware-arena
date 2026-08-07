@@ -28,11 +28,41 @@
             <groupId>com.mware</groupId>
             <artifactId>order.dto</artifactId>
         </dependency>
-        <!-- TODO[Seata 分布式事务]：接入 order.mapper、order.feign 并在此引入 -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>order.mapper</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>order.feign</artifactId>
+        </dependency>
+        <!-- 错误码 / ApiException（base.web 提供） -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>base.web</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
+        </dependency>
+        <!-- Seata AT（@GlobalTransactional）：
+             用 SCA 2023.x 的新坐标，版本由父 POM 的 spring-cloud-alibaba-dependencies BOM 管理（2023.0.3.2）。
+             旧坐标 spring-cloud-alibaba-seata 已停止发布（SCA 2.2.x 后改名），且其 2.1.0.RELEASE 面向 Spring Boot 2。 -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-seata</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- 商品实体 Product：createOrder 计算金额 amount = price × quantity 时使用（跨项目依赖 product 服务，需显式版本号） -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>product.domain</artifactId>
+            <version>0.1.0-SNAPSHOT</version>
         </dependency>
     </dependencies>
 </project>

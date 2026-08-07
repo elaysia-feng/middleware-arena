@@ -22,6 +22,7 @@
         <module>order.dto</module>
         <module>order.mapper</module>
         <module>order.feign</module>
+        <module>order.config</module>
     </modules>
 
     <!-- 内部模块版本管理：子模块之间可无版本引用 -->
@@ -55,6 +56,11 @@
             <dependency>
                 <groupId>com.mware</groupId>
                 <artifactId>order.feign</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mware</groupId>
+                <artifactId>order.config</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

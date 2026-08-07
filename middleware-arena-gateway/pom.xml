@@ -38,6 +38,12 @@
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
         </dependency>
+
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>base.jwt</artifactId>
+        </dependency>
+
     </dependencies>
 
     <build>

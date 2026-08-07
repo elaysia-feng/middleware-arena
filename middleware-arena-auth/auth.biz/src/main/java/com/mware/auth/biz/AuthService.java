@@ -1,10 +1,10 @@
 package com.mware.auth.biz;
 
-import com.mware.auth.dto.LoginRequest;
-import com.mware.auth.dto.LoginResponse;
-import com.mware.auth.dto.RefreshRequest;
-import com.mware.auth.dto.RegisterRequest;
-import com.mware.auth.dto.UserInfoResponse;
+import com.mware.auth.dto.request.LoginRequest;
+import com.mware.auth.dto.request.RefreshRequest;
+import com.mware.auth.dto.request.RegisterRequest;
+import com.mware.auth.dto.response.LoginResponse;
+import com.mware.auth.dto.response.UserInfoResponse;
 
 /**
  * 认证业务接口：双 token（access + refresh）登录闭环。

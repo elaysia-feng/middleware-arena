@@ -23,6 +23,16 @@
             <groupId>org.springframework</groupId>
             <artifactId>spring-web</artifactId>
         </dependency>
+        <!-- 契约接口查询返回 AccountBalance -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>account.domain</artifactId>
+        </dependency>
+        <!-- 统一响应体 ApiResponse：契约接口返回值类型 -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>base.web</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

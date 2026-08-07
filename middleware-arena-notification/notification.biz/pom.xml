@@ -29,6 +29,15 @@
             <artifactId>notification.dto</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>notification.mapper</artifactId>
+        </dependency>
+        <!-- 错误码 / ApiException（base.web 提供） -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>base.web</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <scope>provided</scope>

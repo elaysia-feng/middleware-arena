@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.mware</groupId>
+        <artifactId>ma-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>product</artifactId>
+    <packaging>pom</packaging>
+    <name>product</name>
+    <description>商品服务（提供商品信息与单价，供 order 计算订单金额）</description>
+
+    <modules>
+        <module>product.web</module>
+        <module>product.biz</module>
+        <module>product.domain</module>
+        <module>product.dto</module>
+        <module>product.mapper</module>
+        <module>product.feign</module>
+    </modules>
+
+    <!-- 内部模块版本管理：子模块之间可无版本引用 -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.mware</groupId>
+                <artifactId>product.web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mware</groupId>
+                <artifactId>product.biz</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mware</groupId>
+                <artifactId>product.domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mware</groupId>
+                <artifactId>product.dto</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mware</groupId>
+                <artifactId>product.mapper</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mware</groupId>
+                <artifactId>product.feign</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>

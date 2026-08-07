@@ -3,7 +3,11 @@ package com.mware.community.domain;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
@@ -17,6 +21,9 @@ import java.time.LocalDateTime;
  */
 @Data
 @TableName("community_post")
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class CommunityPost {
 
     @TableId(type = IdType.AUTO)
@@ -29,4 +36,6 @@ public class CommunityPost {
     private Long authorId;
 
     private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
 }

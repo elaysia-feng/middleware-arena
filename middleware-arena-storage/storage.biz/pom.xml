@@ -28,7 +28,15 @@
             <groupId>com.mware</groupId>
             <artifactId>storage.dto</artifactId>
         </dependency>
-        <!-- TODO[Seata AT]：接入 storage.mapper 并在此引入 -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>storage.mapper</artifactId>
+        </dependency>
+        <!-- 错误码 / ApiException（base.web 提供） -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>base.web</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

@@ -28,7 +28,16 @@
             <groupId>com.mware</groupId>
             <artifactId>community.dto</artifactId>
         </dependency>
-        <!-- TODO：接入数据源时把 community.mapper 依赖引入 -->
+        <!-- MyBatis-Plus Mapper（接入数据源后生效） -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>community.mapper</artifactId>
+        </dependency>
+        <!-- 错误码 / ApiException（base.web 提供） -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>base.web</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

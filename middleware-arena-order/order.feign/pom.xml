@@ -23,6 +23,17 @@
             <groupId>org.springframework</groupId>
             <artifactId>spring-web</artifactId>
         </dependency>
+        <!-- 统一响应体 ApiResponse：Feign 返回值类型 -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>base.web</artifactId>
+        </dependency>
+        <!-- 商品实体 Product：ProductClient 查询单价 price 时使用（跨项目依赖 product 服务，需显式版本号） -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>product.domain</artifactId>
+            <version>0.1.0-SNAPSHOT</version>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

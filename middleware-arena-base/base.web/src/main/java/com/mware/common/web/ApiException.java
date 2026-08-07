@@ -18,4 +18,8 @@ public class ApiException extends RuntimeException {
     public ApiException(String message) {
         this(400, message);
     }
+
+    public ApiException(ErrorCode errorCode) {
+        this(errorCode.getCode(), errorCode.getMessage());
+    }
 }
