@@ -38,6 +38,25 @@
             <groupId>com.mware</groupId>
             <artifactId>base.web</artifactId>
         </dependency>
+        <!-- RabbitMQ：点赞 outbox 事件链路（fanout 交换机 / 多队列 / 消费者 / Publish Confirm）
+             用 spring-rabbit 而非 spring-boot-starter-amqp：starter 3.3.5 不在本地离线仓库，
+             直接引 spring-rabbit（BOM 锁定 3.1.x，与 Boot 3.3.5 配套，离线可编译） -->
+        <dependency>
+            <groupId>org.springframework.amqp</groupId>
+            <artifactId>spring-rabbit</artifactId>
+            <!-- BOM 锁定 3.1.7 不在本地离线仓库，钉住离线可用的 3.1.4（同 Boot 3.3 线，API 兼容） -->
+            <version>3.1.4</version>
+        </dependency>
+        <!-- Redis：点赞缓存 / 计数聚合（Redis Cluster） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- JSON：LikeEvent 序列化 / 反序列化（Jackson2JsonMessageConverter） -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

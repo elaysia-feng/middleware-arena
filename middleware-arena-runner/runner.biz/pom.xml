@@ -22,20 +22,29 @@
         </dependency>
         <dependency>
             <groupId>com.mware</groupId>
-            <artifactId>runner.domain</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.mware</groupId>
             <artifactId>runner.dto</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.mware</groupId>
-            <artifactId>runner.mapper</artifactId>
         </dependency>
         <!-- 错误码 / ApiException（base.web 提供） -->
         <dependency>
             <groupId>com.mware</groupId>
             <artifactId>base.web</artifactId>
+        </dependency>
+        <!-- RabbitMQ：runner 消费 experiment.service 投递的 RunnerTaskMessage（@RabbitListener / @EnableRabbit）
+             用 spring-rabbit 而非 spring-boot-starter-amqp：starter 3.3.5 不在本地离线仓库，
+             直接引 spring-rabbit（版本由 runner 根 pom dependencyManagement 钉住 3.1.4，离线可编译）。 -->
+        <dependency>
+            <groupId>org.springframework.amqp</groupId>
+            <artifactId>spring-rabbit</artifactId>
+        </dependency>
+        <!-- JSON：Jackson2JsonMessageConverter 自动配置 / RunnerTaskMessage 反序列化 -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <!-- Redis：任务实例状态缓存（T3 基础设施，T4/T5 使用 RunnerRedisKeys 键名读写） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>

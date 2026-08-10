@@ -32,6 +32,12 @@
             <groupId>com.mware</groupId>
             <artifactId>experiment.mapper</artifactId>
         </dependency>
+        <!-- MQ 消息契约 + 生产端（RunnerTaskMessage / RunnerTaskProducer）：createTask 投递用；
+             传递引入 experiment.config（拓扑 / RabbitTemplate） -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>experiment.mq</artifactId>
+        </dependency>
         <!-- 错误码 / ApiException（base.web 提供） -->
         <dependency>
             <groupId>com.mware</groupId>

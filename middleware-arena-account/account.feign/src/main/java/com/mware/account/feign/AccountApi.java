@@ -3,8 +3,6 @@ package com.mware.account.feign;
 import com.mware.account.domain.AccountBalance;
 import com.mware.common.web.ApiResponse;
 
-import java.math.BigDecimal;
-
 /**
  * 账户 HTTP 契约（被调方侧，仅定义端点签名）。
  * <p>
@@ -18,10 +16,10 @@ public interface AccountApi {
      * 扣减余额（对应 POST /account/deduct）。
      *
      * @param userId 用户 ID
-     * @param amount 扣减金额
+     * @param amount 扣减金额（单位：分）
      * @return 扣减结果（余额不足时抛 ApiException(BALANCE_NOT_ENOUGH)）
      */
-    ApiResponse<Void> deductBalance(Long userId, BigDecimal amount);
+    ApiResponse<Void> deductBalance(Long userId, Long amount);
 
     /**
      * 查询余额（对应 GET /account/balance/{userId}）。

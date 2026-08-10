@@ -1,6 +1,5 @@
 package com.mware.order.biz.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.mware.common.web.ApiException;
@@ -24,7 +23,6 @@ import org.springframework.stereotype.Service;
 import org.apache.seata.spring.annotation.GlobalTransactional;
 import org.springframework.util.StringUtils;
 
-import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -35,15 +33,15 @@ import java.util.UUID;
  * <p>
  * createOrder / getOrder 已可用（幂等、缓存降级、IDOR 校验均已实现），剩余 TODO：
  * <ol>
- *   <li>Seata 分布式事务收尾：建 undo_log 表（见 sql/init.sql）+ application.yml 开启 Seata AT；
- *       storage / account 需作为参与方加入同一全局事务（参与方 DDL 已含 undo_log）。</li>
- *   <li>RabbitMQ 异步下单通知：下单成功后投递订单事件（order.created）至 MQ，
- *       通知服务 / 邮件 / 站内信消费；注意消息投递与本地事务的一致性。</li>
- *   <li>订单超时自动取消：定时任务（如 Spring {@code @Scheduled} / XXL-Job）扫描 CREATE 超 N 分钟
- *       未 PAID 的订单置 CANCEL，并回补库存（storage 加回）/ 余额（account 加回）；注意回补需再走一次分布式事务。</li>
- *   <li>幂等兜底：request_id 加唯一索引（Redis key 丢失场景下防重复下单），
- *       且需先在 createOrder 组装 Order 时写入 requestId（当前未写入该字段）。</li>
- *   <li>状态流转：支付回调 / 关单（PAID / CANCEL 变更），并同步订单详情缓存。</li>
+ * <li>Seata 分布式事务收尾：建 undo_log 表（见 sql/init.sql）+ application.yml 开启 Seata AT；
+ * storage / account 需作为参与方加入同一全局事务（参与方 DDL 已含 undo_log）。</li>
+ * <li>RabbitMQ 异步下单通知：下单成功后投递订单事件（order.created）至 MQ，
+ * 通知服务 / 邮件 / 站内信消费；注意消息投递与本地事务的一致性。</li>
+ * <li>订单超时自动取消：定时任务（如 Spring {@code @Scheduled} / XXL-Job）扫描 CREATE 超 N 分钟
+ * 未 PAID 的订单置 CANCEL，并回补库存（storage 加回）/ 余额（account 加回）；注意回补需再走一次分布式事务。</li>
+ * <li>幂等兜底：request_id 已从 Order 表移除，现仅靠 Redis SETNX 幂等 key 防重；
+ * DB 唯一索引兜底留作未来实验（见 sql/init.sql 注释），若要启用需回加 request_id 列。</li>
+ * <li>状态流转：支付回调 / 关单（PAID / CANCEL 变更），并同步订单详情缓存。</li>
  * </ol>
  */
 @Service
@@ -57,7 +55,6 @@ public class OrderServiceImpl implements OrderService {
     private final ProductClient productClient;
     private final RedisTemplate redisTemplate;
     private final Cache<Long, Order> orderCache;
-
 
     @Override
     @GlobalTransactional
@@ -73,23 +70,16 @@ public class OrderServiceImpl implements OrderService {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
 
-
         // 1. 幂等请求 然后 再组装 Order（userId/productId/quantity/amount/status=CREATED）
         Boolean first = redisTemplate.opsForValue().setIfAbsent(orderKeyPrefix + requestId, uid, Duration.ofMinutes(5));
         if (!first) {
-            // 已提交过：查这个 requestId 落库了没
-            Order exist = orderMapper.selectOne(new LambdaQueryWrapper<Order>()
-                    .eq(Order::getRequestId, requestId)
-                    .eq(Order::getUserId, uid));
-            // 已完成，幂等返回
-            if (exist != null) {
-                return toResponse(exist);
-            }
-            // 进行中：该 requestId 已提交但订单未落库（幂等 key 存在，插入尚未完成/事务未提交）
+            // 已提交过：Redis SETNX 幂等 key 已存在，同一 requestId 直接拒绝。
+            // 注：request_id 已从 Order 表移除（DB 兜底查询是未来实验，见 sql/init.sql 注释），
+            // 现在只靠 Redis key 防重，TTL 5 分钟。
             // TODO 完善逻辑：
-            //   1. 返回"处理中"状态码（如 202 / 自定义码）让前端稍后重查，而非直接 PARAM_INVALID
-            //   2. 可提供轮询接口（按 requestId 查订单）等待落库完成
-            //   3. 注意幂等 key TTL（5 分钟）与订单事务提交的竞态：TTL 过短 → key 先失效、订单后落库 → 重试会重复下单
+            // 1. 返回"处理中"状态码（如 202 / 自定义码）让前端稍后重查，而非直接 PARAM_INVALID
+            // 2. 可提供轮询接口（按 requestId 查订单）等待落库完成
+            // 3. 注意幂等 key TTL（5 分钟）与订单事务提交的竞态：TTL 过短 → key 先失效、订单后落库 → 重试会重复下单
             throw new ApiException(ErrorCode.PARAM_INVALID);
         }
         // 如果下单数量为0 则为系统错误
@@ -104,30 +94,35 @@ public class OrderServiceImpl implements OrderService {
                 throw new ApiException(ErrorCode.PRODUCT_NOT_FOUND);
             }
 
-            BigDecimal amount = product.getPrice().multiply(BigDecimal.valueOf(request.getQuantity()));
+            // 金额统一 Long（单位：分），避免浮点误差：单价分 × 数量
+            Long amount = product.getPrice() * request.getQuantity();
 
             Order order = Order.builder()
                     .userId(uid)
                     .productId(request.getProductId())
                     .quantity(request.getQuantity())
                     .orderNo(generateOrderNo())
+                    .unitPrice(product.getPrice())
                     .amount(amount)
                     .status(OrderStatus.CREATE.getStatus())
                     .createdAt(LocalDateTime.now())
                     .updatedAt(LocalDateTime.now())
                     .build();
-            //   2. 插入订单
+            // 2. 插入订单
             orderMapper.insert(order);
 
-            //   3. storageClient.deductStock(productId, quantity) 扣库存，库存不足抛 ApiException(STOCK_NOT_ENOUGH)
+            // 3. storageClient.deductStock(productId, quantity) 扣库存，库存不足抛
+            // ApiException(STOCK_NOT_ENOUGH)
             storageClient.deductStock(request.getProductId(), request.getQuantity());
 
-            //   4. accountClient.deductBalance(userId, amount) 扣余额，余额不足抛 ApiException(BALANCE_NOT_ENOUGH)
+            // 4. accountClient.deductBalance(userId, amount) 扣余额，余额不足抛
+            // ApiException(BALANCE_NOT_ENOUGH)
             accountClient.deductBalance(uid, amount);
 
             return toResponse(order);
         } catch (Exception e) {
-            // 下单失败：删除幂等 key，允许前端用同一 requestId 重试；再抛出让 Seata 回滚, TODO可能redis缓存删掉了，但是我的seata还没删减完
+            // 下单失败：删除幂等 key，允许前端用同一 requestId 重试；再抛出让 Seata 回滚, TODO
+            // 可能redis缓存删掉了，但是我的seata还没删减完
             redisTemplate.delete(orderKeyPrefix + requestId);
             throw e;
         }
@@ -185,7 +180,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     // 生成订单号
-    private String generateOrderNo(){
+    private String generateOrderNo() {
         return IdWorker.getIdStr();
     }
 
@@ -197,6 +192,7 @@ public class OrderServiceImpl implements OrderService {
                 .userId(order.getUserId())
                 .productId(order.getProductId())
                 .quantity(order.getQuantity())
+                .unitPrice(order.getUnitPrice())
                 .amount(order.getAmount())
                 .status(order.getStatus())
                 .createdAt(order.getCreatedAt())

@@ -13,10 +13,11 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * 实验版本快照实体：保存实验配置版本，支持回滚。
+ * 实验版本实体：保存"这个实验的 V3 到底长什么样"。
  * <p>
- * 字段对齐 sql/init.sql 的 experiment_version 表；
- * configSnapshot 存该版本完整配置快照（JSON），对应 editor.html 的"保存版本"。
+ * 版本内容只存在这里（模板只存元数据 + latestVersionId）：
+ * filesJson 存完整代码文件快照（editable 白名单内嵌每个文件），
+ * runParamsJson 存压测 / 运行参数。V1/V2 各一行，diff 即对比两版 filesJson。
  */
 @Data
 @TableName("experiment_version")
@@ -30,11 +31,26 @@ public class ExperimentVersion {
 
     private Long templateId;
 
-    /** 递增版本号 */
-    private Integer versionNo;
+    /** 递增版本号（同模板内唯一，rollbackVersion 依赖） */
+    private Long versionNo;
 
-    /** 该版本的配置快照（JSON） */
-    private String configSnapshot;
+    /**
+     * 完整代码文件快照（JSON 数组）：
+     * [{"path":"OrderService.java","language":"java","content":"...","editable":true}]
+     */
+    private String filesJson;
+
+    /**
+     * 压测 /
+     * 运行参数（JSON）：{"concurrencyLadder":[100,300,500],"duration":"30s","timeout":"5m","heap":"1GB"}
+     */
+    private String runParamsJson;
+
+    /** 修改说明 */
+    private String changeSummary;
+
+    /** 创建人用户 ID */
+    private Long createdBy;
 
     private LocalDateTime createdAt;
 }

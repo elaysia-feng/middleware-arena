@@ -4,8 +4,6 @@ import com.mware.account.domain.AccountBalance;
 import com.mware.account.mapper.AccountBalanceMapper;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
-
 /**
  * 账户业务实现（骨架占位）。
  * <p>
@@ -21,7 +19,7 @@ public class AccountServiceImpl implements AccountService {
     }
 
     @Override
-    public void deductBalance(Long userId, BigDecimal amount) {
+    public void deductBalance(Long userId, Long amount) {
         // TODO[Seata AT 参与方] 实现清单（只列步骤，不写实现代码）：
         //   1. 参数校验：userId 非空、amount 非空且 > 0，非法抛 ApiException(PARAM_INVALID)
         //   2. 原子扣减，防止并发超扣（关键 SQL，务必带 where 余额条件）：

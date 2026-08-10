@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 /**
  * 模板代码文件（前端输入，纯 DTO）。
  * <p>
- * 随 {@link CreateTemplateRequest#getFiles()} 传入，落版本快照 config_snapshot。
+ * 随 {@link CreateTemplateRequest#getFiles()} 传入，落版本快照 filesJson。
  */
 @Data
 @Builder
@@ -25,4 +25,7 @@ public class TemplateFileRequest {
 
     /** 语言：java / yaml / nginx / go 等 */
     private String language;
+
+    /** 是否可编辑（白名单内为 true，默认 true） */
+    private Boolean editable;
 }

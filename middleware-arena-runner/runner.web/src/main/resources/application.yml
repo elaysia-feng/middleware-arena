@@ -9,6 +9,33 @@ spring:
       discovery:
         server-addr: ${NACOS_ADDR:127.0.0.1:8848}
 
+  # Redis：任务实例状态缓存（键名见 runner.biz 的 RunnerRedisKeys）
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+
+  # ============================================================
+  # RabbitMQ（runner 消费 experiment-service 投递的 RunnerTaskMessage）
+  # 启用：取消注释 + 确保本地 RabbitMQ 已启动（默认 5672）。
+  # 生产端在 experiment-service（RunnerCreaetTaskProducer / RunnerCancelTaskProducer），
+  # 本服务只声明队列 / 绑定 / 死信 / 监听容器（RunnerRabbitConfig）。
+  # 消费端：manual ack（@RabbitListener ackMode=MANUAL）+ retry（重试后仍失败进 DLQ）。
+  # ============================================================
+  rabbitmq:
+    host: ${RABBIT_HOST:127.0.0.1}
+    port: 5672
+    username: ${RABBIT_USER:guest}
+    password: ${RABBIT_PASSWORD:guest}
+    listener:
+      simple:
+        acknowledge-mode: manual           # 手动 ACK（RunnerRabbitConfig 已显式指定 MANUAL，此处兜底）
+        retry:
+          enabled: true                    # 消费失败自动重试（瞬时异常抖动兜底）
+          max-attempts: 3
+          initial-interval: 1000ms
+        default-requeue-rejected: false    # 重试耗尽后不进原队列（走 x-dead-letter-exchange → experiment.task.dlq）
+
 management:
   endpoints:
     web:

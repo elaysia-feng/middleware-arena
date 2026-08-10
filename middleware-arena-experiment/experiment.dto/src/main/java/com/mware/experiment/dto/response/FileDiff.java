@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 /**
  * 单个文件的版本差异（后端输出，纯 DTO）。
  */
@@ -20,4 +22,10 @@ public class FileDiff {
 
     /** 变化类型：ADDED / MODIFIED / DELETED / UNCHANGED */
     private String changeType;
+
+    /**
+     * 行级差异明细（MODIFIED / ADDED / DELETED 时有值，UNCHANGED 为空列表）：
+     * ADDED 全为 type=ADD，DELETED 全为 type=REMOVE，MODIFIED 为 LCS 计算出的 + / − 行。
+     */
+    private List<DiffLine> diffLines;
 }

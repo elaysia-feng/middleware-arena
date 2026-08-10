@@ -13,10 +13,10 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * 实验任务实体（骨架占位，字段与 sql/init.sql 对齐）。
+ * 实验任务实体：只回答"某个用户运行某个版本，现在跑到哪了"。
  * <p>
- * - status 状态机：pending / queued / running / success / failed / cancelled
- * - versionId 关联实验版本快照表
+ * 状态只在这里保存一份（runner 侧不持久化，回传 progress/result 由本表承载）；
+ * name / description 不重复存，模板 / 版本里已有。
  */
 @Data
 @TableName("experiment_task")
@@ -34,16 +34,23 @@ public class ExperimentTask {
     /** 实验版本快照 ID */
     private Long versionId;
 
-    /** 实验任务名称 */
-    private String name;
-
-    /** 任务描述 */
-    private String description;
-
-    /** 任务状态：pending / queued / running / success / failed / cancelled */
+    /** 任务状态：QUEUED / RUNNING / SUCCESS / FAILED / CANCELLED */
     private String status;
 
+    /** 当前阶段：BUILDING / STARTING / BENCHMARKING / COLLECTING / ANALYZING */
+    private String currentStage;
+
+    /** 进度 0~100 */
+    private Integer progress;
+
+    /** 失败原因（status=FAILED 时有值） */
+    private String errorMessage;
+
     private LocalDateTime createdAt;
+
+    private LocalDateTime startedAt;
+
+    private LocalDateTime finishedAt;
 
     private LocalDateTime updatedAt;
 }

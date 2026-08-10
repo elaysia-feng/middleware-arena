@@ -9,7 +9,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -27,7 +26,8 @@ public class AccountBalance {
 
     private Long userId;
 
-    private BigDecimal balance;
+    /** 账户余额（单位：分） */
+    private Long balance;
 
     private LocalDateTime createdAt;
 

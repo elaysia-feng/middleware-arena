@@ -41,6 +41,24 @@
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
         </dependency>
 
+        <!-- ShardingSphere-JDBC 5.5.3：分库分表（点赞高并发实验）
+             JDBC Driver 模式（低耦合）：Spring Boot 只把 jdbc:shardingsphere:... 当普通数据源，
+             分片由 ShardingSphereDriver 按 application-sharding.yml 规则拦截改写。
+             5.5.x 已移除 spring.shardingsphere.* starter 自动配置，故无 starter 依赖。
+             shardingsphere-jdbc 是 Driver 壳；shardingsphere-sharding-core 是分片规则引擎
+             （在 jdbc 的 pom 里是 test scope，运行时分片必须显式声明）。
+             已离线下载入 MVN_repo（mvn dependency:get 直连 Central），离线编译无碍。 -->
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-jdbc</artifactId>
+            <version>5.5.3</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-sharding-core</artifactId>
+            <version>5.5.3</version>
+        </dependency>
+
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

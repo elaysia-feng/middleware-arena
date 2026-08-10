@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.mware</groupId>
+        <artifactId>experiment</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>experiment.config</artifactId>
+    <name>experiment.config</name>
+    <description>实验服务基础设施配置（RabbitMQ 消息拓扑 / 生产端模板等）</description>
+
+    <dependencies>
+        <!-- RabbitMQ：实验任务投递链路（experiment → runner.task.queue，生产端）
+             用 spring-rabbit 而非 spring-boot-starter-amqp：starter 3.3.5 不在本地离线仓库，
+             直接引 spring-rabbit（根 pom dependencyManagement 钉住 3.1.4，与 Boot 3.3 配套，离线可编译） -->
+        <dependency>
+            <groupId>org.springframework.amqp</groupId>
+            <artifactId>spring-rabbit</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

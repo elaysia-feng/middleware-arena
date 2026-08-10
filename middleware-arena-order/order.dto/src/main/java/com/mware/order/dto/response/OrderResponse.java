@@ -6,7 +6,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -32,8 +31,11 @@ public class OrderResponse {
     /** 购买数量 */
     private Integer quantity;
 
-    /** 订单金额 */
-    private BigDecimal amount;
+    /** 下单时商品单价快照（单位：分） */
+    private Long unitPrice;
+
+    /** 订单金额（单位：分）= unitPrice × quantity */
+    private Long amount;
 
     /** 订单状态（CREATE / PAID / CANCEL，见 {@link com.mware.order.domain.OrderStatus}） */
     private String status;

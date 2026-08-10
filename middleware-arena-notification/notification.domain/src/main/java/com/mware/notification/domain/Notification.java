@@ -36,6 +36,9 @@ public class Notification {
     /** 来源类型：experiment / order / system */
     private String sourceType;
 
+    /** 来源记录 ID（如实验 taskId / 订单号），便于跳转与去重 */
+    private Long sourceId;
+
     /** 通知标题 */
     private String title;
 
@@ -44,6 +47,9 @@ public class Notification {
 
     /** 是否已读：0 未读 / 1 已读 */
     private Boolean isRead;
+
+    /** 已读时间（isRead=true 时记录，null 表示未读） */
+    private LocalDateTime readAt;
 
     private LocalDateTime createdAt;
 }

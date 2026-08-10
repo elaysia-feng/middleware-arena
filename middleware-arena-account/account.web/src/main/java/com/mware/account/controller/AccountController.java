@@ -16,8 +16,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.math.BigDecimal;
-
 /**
  * 账户接口（框架占位，返回统一 {@link ApiResponse}）。
  * <p>
@@ -54,7 +52,7 @@ public class AccountController {
     @Operation(summary = "扣减余额（内部服务间调用）")
     @PostMapping("/deduct")
     public ApiResponse<Void> deductBalance(@RequestParam Long userId,
-                                           @RequestParam BigDecimal amount) {
+                                           @RequestParam Long amount) {
         accountService.deductBalance(userId, amount);
         return ApiResponse.ok();
     }

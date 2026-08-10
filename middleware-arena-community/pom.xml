@@ -25,6 +25,19 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- RabbitMQ：BOM(ma-parent) 把 spring-rabbit/spring-amqp 管理到 3.1.7，本地离线仓库缺失；
+                 在本服务 dependencyManagement 钉住离线可用的 3.1.4（同 Boot 3.3 线，API 兼容），
+                 子模块管理优先于父 BOM，避免 web 传递依赖解析 3.1.7 失败 -->
+            <dependency>
+                <groupId>org.springframework.amqp</groupId>
+                <artifactId>spring-rabbit</artifactId>
+                <version>3.1.4</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.amqp</groupId>
+                <artifactId>spring-amqp</artifactId>
+                <version>3.1.4</version>
+            </dependency>
             <dependency>
                 <groupId>com.mware</groupId>
                 <artifactId>community.web</artifactId>

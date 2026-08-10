@@ -8,6 +8,7 @@ import com.mware.community.biz.CommunityService;
 import com.mware.community.dto.request.CommentRequest;
 import com.mware.community.dto.request.CreatePostRequest;
 import com.mware.community.dto.response.CommentResponse;
+import com.mware.community.dto.response.LikeStatusResponse;
 import com.mware.community.dto.response.PostResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -92,11 +93,17 @@ public class CommunityController {
         return ApiResponse.ok(communityService.pageComments(postId, page, size));
     }
 
-    @Operation(summary = "点赞 / 取消点赞")
+    @Operation(summary = "点赞 / 取消点赞（事务性 Outbox → RabbitMQ 异步聚合）")
     @PostMapping("/post/{postId}/like")
     public ApiResponse<Void> like(@PathVariable Long postId) {
         communityService.like(postId, currentUserId());
         return ApiResponse.ok();
+    }
+
+    @Operation(summary = "点赞状态（当前用户是否已赞 + 赞数）")
+    @GetMapping("/post/{postId}/like/status")
+    public ApiResponse<LikeStatusResponse> likeStatus(@PathVariable Long postId) {
+        return ApiResponse.ok(communityService.likeStatus(postId));
     }
 
     @Operation(summary = "收藏 / 取消收藏")

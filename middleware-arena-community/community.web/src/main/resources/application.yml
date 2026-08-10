@@ -9,6 +9,74 @@ spring:
       discovery:
         server-addr: ${NACOS_ADDR:127.0.0.1:8848}
 
+  # ============================================================
+  # RabbitMQ（点赞 outbox 事件链路）
+  # 启用：取消注释 + 确保本地 RabbitMQ 已启动（默认 5672）。
+  # 生产端可靠性：publisher-confirm-type=correlated 才能收到 ConfirmCallback；
+  #               publisher-returns=true + RabbitTemplate.setMandatory(true) 才能收到 ReturnsCallback。
+  # 消费端：manual ack（@RabbitListener ackMode=MANUAL）+ retry（重试后仍失败进 DLQ）。
+  # ============================================================
+  # rabbitmq:
+  #   host: ${RABBIT_HOST:127.0.0.1}
+  #   port: 5672
+  #   username: ${RABBIT_USER:guest}
+  #   password: ${RABBIT_PASSWORD:guest}
+  #   publisher-confirm-type: correlated     # Publisher Confirm（async ConfirmCallback）
+  #   publisher-returns: true                # Mandatory/Return（不可路由消息回调）
+  #   listener:
+  #     simple:
+  #       acknowledge-mode: manual           # 手动 ACK（框架内 ackMode=MANUAL 已显式指定，此处兜底）
+  #       retry:
+  #         enabled: true                    # 消费失败自动重试
+  #         max-attempts: 3
+  #         initial-interval: 1000ms
+  #       default-requeue-rejected: false    # 重试耗尽后不进原队列（走 x-dead-letter-exchange → like.dlq）
+
+  # ============================================================
+  # Redis Cluster（点赞缓存 / 计数聚合）
+  # 启用：取消注释。单机模式只用 spring.data.redis.*，集群用 cluster.nodes。
+  # 键规划：
+  #   like:counter:pending    Hash  待刷入 MySQL 的计数增量（聚合窗口内 HINCRBY）
+  #   like:count:{postId}     String 点赞数缓存（读路径）
+  #   like:users:{postId}     Set   点赞用户集合（cache 消费者写入，支持 SISMEMBER 判赞）
+  #   like:hotpost:{yyyyMMdd} ZSet  当日热门帖子（statistics 消费者写入）
+  # ============================================================
+  # data:
+  #   redis:
+  #     cluster:
+  #       nodes: ${REDIS_CLUSTER_NODES:127.0.0.1:6379,127.0.0.1:6380,127.0.0.1:6381}
+  #     timeout: 3s
+
+  # ============================================================
+  # MySQL 数据源（MyBatis-Plus）
+  #   A) 单库（默认）：普通 MySQL 驱动
+  #   B) 分库分表（点赞高并发实验）：改用 ShardingSphere 5.5.x JDBC Driver 模式，
+  #      Spring Boot 只配置 Driver + URL，分片由 ShardingSphereDriver 按
+  #      application-sharding.yml 规则拦截改写（依赖见 community.web/pom.xml）。
+  #      注意：driver 模式下本文件不可同时声明普通 datasource（会冲突）。
+  # ============================================================
+  # A) 单库
+  # datasource:
+  #   driver-class-name: com.mysql.cj.jdbc.Driver
+  #   url: jdbc:mysql://127.0.0.1:3306/ma_community?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Shanghai
+  #   username: root
+  #   password: ${MYSQL_PASSWORD:root}
+  # B) 分库分表（ShardingSphereDriver）
+  # datasource:
+  #   driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
+  #   url: jdbc:shardingsphere:classpath:application-sharding.yml
+  #   username: root
+  #   password: ${MYSQL_PASSWORD:root}
+
+# ============================================================
+# 点赞链路定时任务参数（OutboxRelay / LikeCountFlushScheduler）
+# ============================================================
+community:
+  outbox:
+    relay-interval-ms: 5000      # Outbox 扫描间隔：PENDING → RabbitMQ
+    relay-batch-size: 100        # 单次扫描批大小
+    flush-interval-ms: 10000     # 待刷计数 → MySQL 批量 UPDATE 间隔（聚合窗口）
+
 management:
   endpoints:
     web:

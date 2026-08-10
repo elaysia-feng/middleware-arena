@@ -1,6 +1,8 @@
 package com.mware.experiment.biz;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.mware.experiment.dto.request.CreateTemplateRequest;
+import com.mware.experiment.dto.request.UpdateTemplateRequest;
 import com.mware.experiment.dto.response.TaskResponse;
 import com.mware.experiment.dto.response.TemplateResponse;
 import com.mware.experiment.dto.response.VersionDiffResponse;
@@ -19,7 +21,7 @@ public interface ExperimentService {
     /** 实验模板 CRUD */
     TemplateResponse createTemplate(CreateTemplateRequest request, Long userId);
 
-    TemplateResponse updateTemplate(Long templateId, CreateTemplateRequest request, Long userId);
+    TemplateResponse updateTemplate(Long templateId, UpdateTemplateRequest request, Long userId);
 
     void deleteTemplate(Long templateId);
 
@@ -27,8 +29,8 @@ public interface ExperimentService {
 
     List<TemplateResponse> pageTemplates(int page, int size);
 
-    /** 版本快照：保存配置快照 */
-    VersionResponse createVersion(Long templateId, String configSnapshot);
+    /** 版本：为模板保存一个新版本（文件 + 运行参数 + 变更说明），并推进 latestVersionId */
+    VersionResponse createVersion(Long templateId, String filesJson, String runParamsJson, String changeSummary);
 
     /** 版本回滚：按版本恢复配置 */
     void rollbackVersion(Long templateId, Long versionId);
@@ -52,7 +54,7 @@ public interface ExperimentService {
     VersionResponse getVersion(Long versionId);
 
     /** 对比两个版本（文件级差异） */
-    VersionDiffResponse diffVersion(Long fromVersionId, Long toVersionId);
+    VersionDiffResponse diffVersion(Long fromVersionId, Long toVersionId) throws JsonProcessingException;
 
     /** 重试失败任务 */
     TaskResponse retryTask(Long taskId);

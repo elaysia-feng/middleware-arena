@@ -10,7 +10,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -30,8 +29,8 @@ public class Product {
 
     private String name;
 
-    /** 单价（order 侧金额计算的基准） */
-    private BigDecimal price;
+    /** 单价（单位：分，order 侧金额计算的基准 amount = price × quantity） */
+    private Long price;
 
     private String description;
 

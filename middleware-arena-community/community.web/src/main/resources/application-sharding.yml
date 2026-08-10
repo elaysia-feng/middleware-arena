@@ -1,0 +1,98 @@
+# ============================================================
+# ShardingSphere-JDBC 5.5.x 分库分表配置 —— JDBC Driver 模式（低耦合）
+# ★ 依赖（已离线下载入 MVN_repo，编译无碍）：
+#     org.apache.shardingsphere:shardingsphere-jdbc:5.5.3           （Driver 壳）
+#     org.apache.shardingsphere:shardingsphere-sharding-core:5.5.3  （分片规则引擎）
+# ★ 启用方式（Spring Boot 端，见 application.yml 数据源注释）：
+#     spring.datasource.driver-class-name=org.apache.shardingsphere.driver.ShardingSphereDriver
+#     spring.datasource.url=jdbc:shardingsphere:classpath:application-sharding.yml
+#   5.5.x 已移除 spring.shardingsphere.* starter 自动配置：Spring Boot 只把本 URL
+#   当作普通数据源，SQL 由 ShardingSphereDriver 拦截、按本文件规则改写路由。
+# ★ 目标：post_like + event_outbox 2 库 × 4 表，按 post_id 哈希路由。
+#   库规则：post_id % 2      → ds_0 / ds_1
+#   表规则：post_id % 4      → post_like_0..3 / event_outbox_0..3
+# ★ event_outbox 与 post_like 用同一分片键（aggregate_id = postId），
+#   保证"事实 + 事件"落在同一分片，事务内一致。
+# ★ MyBatis-Plus 只感知逻辑表名（post_like / event_outbox），物理路由由 ShardingSphere 改写。
+# ============================================================
+
+# ------------------------------------------------------------
+# 物理数据源（2 个库；库名带分片后缀）
+# dataSourceClassName + 属性驱动：ShardingSphere 用反射实例化 Hikari 并注入 jdbcUrl 等
+# ------------------------------------------------------------
+dataSources:
+  ds_0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/ma_community_ds0?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Shanghai
+    username: root
+    password: ${MYSQL_PASSWORD:root}
+  ds_1:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/ma_community_ds1?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Shanghai
+    username: root
+    password: ${MYSQL_PASSWORD:root}
+
+# ------------------------------------------------------------
+# 分片规则（规则以数组 + !TAG 标记，标签名即规则类型）
+# ------------------------------------------------------------
+rules:
+  - !SHARDING
+    tables:
+      # 点赞事实表：2 库 × 4 表，post_id 取模
+      post_like:
+        actualDataNodes: ds_${0..1}.post_like_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: post_id
+            shardingAlgorithmName: like-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: post_id
+            shardingAlgorithmName: like-table-inline
+        keyGenerateStrategy:
+          column: id
+          keyGeneratorName: snowflake
+      # 事件表：与 post_like 同片（aggregate_id = postId），保证事实与事件同分片
+      event_outbox:
+        actualDataNodes: ds_${0..1}.event_outbox_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: aggregate_id
+            shardingAlgorithmName: outbox-db-inline
+        tableStrategy:
+          standard:
+            shardingColumn: aggregate_id
+            shardingAlgorithmName: outbox-table-inline
+        keyGenerateStrategy:
+          column: id
+          keyGeneratorName: snowflake
+    # 分片算法：库/表各自独立 INLINE 取模
+    shardingAlgorithms:
+      like-db-inline:
+        type: INLINE
+        props:
+          algorithm-expression: ds_${post_id % 2}
+      like-table-inline:
+        type: INLINE
+        props:
+          algorithm-expression: post_like_${post_id % 4}
+      outbox-db-inline:
+        type: INLINE
+        props:
+          algorithm-expression: ds_${aggregate_id % 2}
+      outbox-table-inline:
+        type: INLINE
+        props:
+          algorithm-expression: event_outbox_${aggregate_id % 4}
+    # 主键生成器：snowflake 避免分片下自增冲突
+    keyGenerators:
+      snowflake:
+        type: SNOWFLAKE
+
+# ------------------------------------------------------------
+# ShardingSphere 全局配置
+# ------------------------------------------------------------
+props:
+  sql-show: true

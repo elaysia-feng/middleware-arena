@@ -6,10 +6,12 @@ import com.mware.common.web.ErrorCode;
 import com.mware.common.web.UserContext;
 import com.mware.experiment.biz.ExperimentService;
 import com.mware.experiment.dto.request.CreateTemplateRequest;
+import com.mware.experiment.dto.request.UpdateTemplateRequest;
 import com.mware.experiment.dto.response.TaskResponse;
 import com.mware.experiment.dto.response.TemplateResponse;
 import com.mware.experiment.dto.response.VersionDiffResponse;
 import com.mware.experiment.dto.response.VersionResponse;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
@@ -67,7 +69,7 @@ public class ExperimentController {
     @Operation(summary = "更新实验模板")
     @PutMapping("/template/{templateId}")
     public ApiResponse<TemplateResponse> updateTemplate(@PathVariable Long templateId,
-            @RequestBody CreateTemplateRequest request) {
+            @RequestBody UpdateTemplateRequest request) {
         Long userId = UserContext.getUserId();
         if (userId == null) {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
@@ -96,12 +98,14 @@ public class ExperimentController {
         return ApiResponse.ok(experimentService.pageTemplates(page, size));
     }
 
-    @Operation(summary = "保存实验版本快照")
+    @Operation(summary = "为模板保存新版本（文件快照 + 运行参数）")
     @PostMapping("/version")
     public ApiResponse<VersionResponse> createVersion(
             @RequestParam Long templateId,
-            @RequestParam String configSnapshot) {
-        return ApiResponse.ok(experimentService.createVersion(templateId, configSnapshot));
+            @RequestParam String filesJson,
+            @RequestParam(required = false) String runParamsJson,
+            @RequestParam(required = false) String changeSummary) {
+        return ApiResponse.ok(experimentService.createVersion(templateId, filesJson, runParamsJson, changeSummary));
     }
 
     @Operation(summary = "回滚实验版本")
@@ -129,7 +133,7 @@ public class ExperimentController {
     @GetMapping("/version/diff")
     public ApiResponse<VersionDiffResponse> diffVersion(
             @RequestParam Long fromVersionId,
-            @RequestParam Long toVersionId) {
+            @RequestParam Long toVersionId) throws JsonProcessingException {
         return ApiResponse.ok(experimentService.diffVersion(fromVersionId, toVersionId));
     }
 

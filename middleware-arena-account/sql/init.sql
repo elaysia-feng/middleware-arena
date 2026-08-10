@@ -2,11 +2,11 @@
 -- 接入 MySQL 时执行此脚本建表
 
 CREATE TABLE `account_balance` (
-    id         BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    user_id    BIGINT         NOT NULL COMMENT '用户 ID',
-    balance    DECIMAL(12,2)  NOT NULL DEFAULT 0.00 COMMENT '账户余额',
-    created_at DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    id         BIGINT   NOT NULL AUTO_INCREMENT COMMENT '主键',
+    user_id    BIGINT   NOT NULL COMMENT '用户 ID（一个用户一个账户）',
+    balance    BIGINT   NOT NULL DEFAULT 0 COMMENT '账户余额（单位：分）',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
     UNIQUE KEY uk_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='账户余额表';

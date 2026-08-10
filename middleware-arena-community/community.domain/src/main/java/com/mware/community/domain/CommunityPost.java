@@ -35,6 +35,15 @@ public class CommunityPost {
 
     private Long authorId;
 
+    /** 点赞数（异步聚合链路写入，最终一致，见 sql/init.sql） */
+    private Long likeCount;
+
+    /** 收藏数（异步聚合链路写入，最终一致） */
+    private Long favoriteCount;
+
+    /** 评论数（异步聚合链路写入，最终一致） */
+    private Long commentCount;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

@@ -26,11 +26,11 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void handleExperimentCompleted(String message) {
         // TODO[通知]：消费 experiment.completed 事件 → 创建站内通知
-        //   1. 解析 message（JSON：experimentId / taskId / status / 结果摘要）
-        //   2. 组装 NotificationRequest{type=experiment_done, sourceType=experiment, title, content}，
+        //   1. 解析 message（JSON：taskId / status / 结果摘要）
+        //   2. 组装 NotificationRequest{type=experiment_done, sourceType=experiment, sourceId=taskId, title, content}，
         //      userId 从 UserContext 或 message 取（MQ 事件需携带接收者 userId）
         //   3. 落库 notificationMapper.insert(notification)，再走 push() 实时推送
-        //   4. 幂等防重复消费：以事件唯一键（如 experimentId+taskId）判重
+        //   4. 幂等防重复消费：以 sourceId（taskId）判重（source_type + source_id 有联合索引 idx_source）
     }
 
     @Override
@@ -49,7 +49,7 @@ public class NotificationServiceImpl implements NotificationService {
         // TODO[通知]：标记已读
         //   1. 归属校验（防 IDOR）：selectOne(id=notificationId AND user_id=userId)，
         //      查不到抛 ApiException(NOT_FOUND)——他人通知不可读/改
-        //   2. 置 isRead=true，notificationMapper.updateById(notification)
+        //   2. 置 isRead=true、readAt=now，notificationMapper.updateById(notification)
     }
 
     @Override
@@ -87,6 +87,7 @@ public class NotificationServiceImpl implements NotificationService {
         return Notification.builder()
                 .type(request.getType())
                 .sourceType(request.getSourceType())
+                .sourceId(request.getSourceId())
                 .title(request.getTitle())
                 .content(request.getContent())
                 .build();
@@ -99,9 +100,11 @@ public class NotificationServiceImpl implements NotificationService {
                 .userId(notification.getUserId())
                 .type(notification.getType())
                 .sourceType(notification.getSourceType())
+                .sourceId(notification.getSourceId())
                 .title(notification.getTitle())
                 .content(notification.getContent())
                 .isRead(notification.getIsRead())
+                .readAt(notification.getReadAt())
                 .createdAt(notification.getCreatedAt())
                 .build();
     }

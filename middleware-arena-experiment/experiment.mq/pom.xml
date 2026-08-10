@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.mware</groupId>
+        <artifactId>experiment</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>experiment.mq</artifactId>
+    <name>experiment.mq</name>
+    <description>实验服务 MQ 消息契约 + 生产端（RunnerTaskMessage / RunnerTaskProducer）</description>
+
+    <dependencies>
+        <!-- 拓扑常量（exchange / routingKey）与 RabbitTemplate 来自 experiment.config -->
+        <dependency>
+            <groupId>com.mware</groupId>
+            <artifactId>experiment.config</artifactId>
+        </dependency>
+        <!-- RabbitMQ 生产端 API（RabbitTemplate / CorrelationData）；版本由根 pom dependencyManagement 钉 3.1.4 -->
+        <dependency>
+            <groupId>org.springframework.amqp</groupId>
+            <artifactId>spring-rabbit</artifactId>
+        </dependency>
+        <!-- Redis：取消时查任务→实例登记（runner 侧 T4 登记），实现 per-instance 定向取消；
+             版本由 ma-parent 的 spring-boot-dependencies BOM 管理，不写 version（同 community.biz） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

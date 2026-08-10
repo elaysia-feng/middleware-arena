@@ -1,18 +1,34 @@
 package com.mware.community.biz;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mware.common.web.ApiException;
 import com.mware.common.web.ErrorCode;
 import com.mware.common.web.UserContext;
 import com.mware.community.domain.Comment;
 import com.mware.community.domain.CommunityPost;
+import com.mware.community.domain.EventOutbox;
+import com.mware.community.domain.PostFavorite;
+import com.mware.community.domain.PostLike;
+import com.mware.community.dto.message.LikeEvent;
 import com.mware.community.dto.request.CommentRequest;
 import com.mware.community.dto.request.CreatePostRequest;
 import com.mware.community.dto.response.CommentResponse;
+import com.mware.community.dto.response.LikeStatusResponse;
 import com.mware.community.dto.response.PostResponse;
+import com.mware.community.mapper.CommentMapper;
 import com.mware.community.mapper.CommunityPostMapper;
+import com.mware.community.mapper.EventOutboxMapper;
+import com.mware.community.mapper.PostFavoriteMapper;
+import com.mware.community.mapper.PostLikeMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 社区业务实现（骨架占位）。
@@ -23,10 +39,24 @@ import java.util.List;
 @Service
 public class CommunityServiceImpl implements CommunityService {
 
-    private final CommunityPostMapper communityPostMapper;
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    public CommunityServiceImpl(CommunityPostMapper communityPostMapper) {
+    private final CommunityPostMapper communityPostMapper;
+    private final CommentMapper commentMapper;
+    private final PostLikeMapper postLikeMapper;
+    private final PostFavoriteMapper postFavoriteMapper;
+    private final EventOutboxMapper eventOutboxMapper;
+
+    public CommunityServiceImpl(CommunityPostMapper communityPostMapper,
+                                CommentMapper commentMapper,
+                                PostLikeMapper postLikeMapper,
+                                PostFavoriteMapper postFavoriteMapper,
+                                EventOutboxMapper eventOutboxMapper) {
         this.communityPostMapper = communityPostMapper;
+        this.commentMapper = commentMapper;
+        this.postLikeMapper = postLikeMapper;
+        this.postFavoriteMapper = postFavoriteMapper;
+        this.eventOutboxMapper = eventOutboxMapper;
     }
 
     @Override
@@ -113,21 +143,91 @@ public class CommunityServiceImpl implements CommunityService {
         return null;
     }
 
+    /**
+     * 点赞 / 取消点赞 —— <b>Transactional Outbox</b>：
+     * <pre>
+     *   BEGIN
+     *     INSERT INTO post_like(...)      -- 点赞事实（最终事实唯一来源）
+     *     INSERT INTO event_outbox(...)   -- 待发送事件（LIKE / UNLIKE）
+     *   COMMIT
+     *      ↓ OutboxRelay 扫描 PENDING → RabbitMQ(fanout) → count/cache/statistics 消费者
+     * </pre>
+     * 本地事务提交即"事件已入账"，DB 成功但 MQ 失败由 outbox 重扫补偿，不丢事件。
+     * 写 MySQL 不直接碰 Redis：点赞状态先由 cache 消费者回写 Redis，计数由 count 消费者聚合（最终一致）。
+     */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void like(Long postId, Long userId) {
-        // TODO[社区]：点赞 / 取消点赞
-        //   1. 判断是否已点赞：查 community_like（post_id + user_id 唯一）
-        //   2. 未点赞：插入 community_like 记录 + Redis 计数 INCR（key: like:count:{postId}）
-        //   3. 已点赞：删除 community_like 记录 + Redis 计数 DECR
-        //   4. 异步持久化 / 定时刷库，避免写放大
+        // 1. 判定当前状态：post_like（post_id + user_id 唯一）是否有行
+        Long existCount = postLikeMapper.selectCount(new LambdaQueryWrapper<PostLike>()
+                .eq(PostLike::getPostId, postId)
+                .eq(PostLike::getUserId, userId));
+        boolean liked = existCount != null && existCount > 0;
+        String action = liked ? LikeEvent.ACTION_UNLIKE : LikeEvent.ACTION_LIKE;
+
+        // 2. 写点赞事实：未点赞 → 插入；已点赞 → 删除（并发冲突抛唯一键异常 → 事务回滚，两端一致）
+        if (liked) {
+            postLikeMapper.delete(new LambdaQueryWrapper<PostLike>()
+                    .eq(PostLike::getPostId, postId)
+                    .eq(PostLike::getUserId, userId));
+        } else {
+            postLikeMapper.insert(PostLike.builder()
+                    .postId(postId)
+                    .userId(userId)
+                    .createdAt(LocalDateTime.now())
+                    .build());
+        }
+
+        // 3. 同事务写 outbox 事件（OutboxRelay 异步投递，勿在此直接发 MQ）
+        eventOutboxMapper.insert(buildOutbox(postId, userId, action));
+    }
+
+    @Override
+    public LikeStatusResponse likeStatus(Long postId) {
+        // TODO[社区]：点赞状态（读路径最终一致）
+        //   1. liked：Redis SISMEMBER like:users:{postId} userId（cache 消费者写入的 Set）
+        //      或 Bitmap：GETBIT like:bitmap:{postId} userId
+        //   2. likeCount：Redis GET like:count:{postId}，未命中降级读 community_post.like_count
+        //   3. 点赞状态是公开信息，无需归属校验
+        //   （当前返回占位值，接入 RedisTemplate 后实现）
+        return LikeStatusResponse.builder()
+                .postId(postId)
+                .liked(false)
+                .likeCount(0L)
+                .build();
+    }
+
+    /** 组装 outbox 事件行：eventId=UUID、payload=LikeEvent JSON */
+    private EventOutbox buildOutbox(Long postId, Long userId, String action) {
+        LikeEvent event = LikeEvent.builder()
+                .eventId(UUID.randomUUID().toString().replace("-", ""))
+                .postId(postId)
+                .userId(userId)
+                .action(action)
+                .timestamp(Instant.now().getEpochSecond())
+                .build();
+        try {
+            return EventOutbox.builder()
+                    .eventId(event.getEventId())
+                    .aggregateId(postId)
+                    .eventType(action)
+                    .payload(OBJECT_MAPPER.writeValueAsString(event))
+                    .status(EventOutbox.STATUS_PENDING)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+        } catch (JsonProcessingException e) {
+            // 事件序列化失败属系统错误：事务回滚，点赞事实不落库
+            throw new ApiException(ErrorCode.INTERNAL_ERROR);
+        }
     }
 
     @Override
     public void favorite(Long postId, Long userId) {
-        // TODO[社区]：收藏 / 取消收藏
-        //   1. 查询 community_favorite 是否存在（post_id + user_id 唯一）
+        // TODO[社区]：收藏 / 取消收藏（表 post_favorite，post_id + user_id 唯一）
+        //   1. postFavoriteMapper.selectCount(eq post_id, eq user_id) 判定是否已收藏
         //   2. 不存在：insert（收藏）
         //   3. 存在：deleteById（取消收藏）
+        //   4. 收藏数同点赞链路走 outbox + MQ 异步聚合（eventType=FAVORITE/UNFAVORITE）
     }
 
     @Override
@@ -160,8 +260,8 @@ public class CommunityServiceImpl implements CommunityService {
     }
 
     /**
-     * domain → dto 映射。likeCount / favoriteCount / commentCount 为聚合计数，
-     * 待接入 Redis 计数 / DB 聚合后填充，当前置 0 占位。
+     * domain → dto 映射。likeCount / favoriteCount / commentCount 为异步聚合写入的最终一致值；
+     * 未聚合完成（null）时兜底 0。
      */
     private PostResponse toPostResponse(CommunityPost post) {
         return PostResponse.builder()
@@ -169,9 +269,9 @@ public class CommunityServiceImpl implements CommunityService {
                 .title(post.getTitle())
                 .content(post.getContent())
                 .authorId(post.getAuthorId())
-                .likeCount(0L)
-                .favoriteCount(0L)
-                .commentCount(0L)
+                .likeCount(post.getLikeCount() != null ? post.getLikeCount() : 0L)
+                .favoriteCount(post.getFavoriteCount() != null ? post.getFavoriteCount() : 0L)
+                .commentCount(post.getCommentCount() != null ? post.getCommentCount() : 0L)
                 .createdAt(post.getCreatedAt())
                 .build();
     }

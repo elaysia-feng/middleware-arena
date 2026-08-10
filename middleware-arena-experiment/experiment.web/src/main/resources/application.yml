@@ -9,6 +9,26 @@ spring:
       discovery:
         server-addr: ${NACOS_ADDR:127.0.0.1:8848}
 
+  # Redis：取消任务时查询 runner 任务→实例登记（键名 runner:task:instance:{taskId}），定向投递取消消息
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+
+  # ============================================================
+  # RabbitMQ（实验任务投递链路：experiment → runner.task.queue）
+  # 生产端可靠性：publisher-confirm-type=correlated 才能收到 ConfirmCallback；
+  #               publisher-returns=true + RabbitTemplate.setMandatory(true) 才能收到 ReturnsCallback。
+  # 需本地 RabbitMQ 已启动（默认 5672，guest/guest）。
+  # ============================================================
+  rabbitmq:
+    host: ${RABBIT_HOST:127.0.0.1}
+    port: 5672
+    username: ${RABBIT_USER:guest}
+    password: ${RABBIT_PASSWORD:guest}
+    publisher-confirm-type: correlated     # Publisher Confirm（异步 ConfirmCallback）
+    publisher-returns: true                # Mandatory/Return（不可路由消息回调）
+
 management:
   endpoints:
     web:

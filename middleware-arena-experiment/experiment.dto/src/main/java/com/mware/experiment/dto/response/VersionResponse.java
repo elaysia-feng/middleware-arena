@@ -10,6 +10,9 @@ import java.time.LocalDateTime;
 
 /**
  * 实验版本快照响应对象（后端输出，纯 DTO）。
+ * <p>
+ * filesJson / runParamsJson 为版本内容，仅属主可见（非属主返回 null）；
+ * versionNo / changeSummary / createdBy 为版本元数据，公开。
  */
 @Data
 @Builder
@@ -22,10 +25,19 @@ public class VersionResponse {
     private Long templateId;
 
     /** 递增版本号 */
-    private Integer versionNo;
+    private Long versionNo;
 
-    /** 该版本的配置快照（JSON） */
-    private String configSnapshot;
+    /** 完整代码文件快照（JSON 数组） */
+    private String filesJson;
+
+    /** 压测 / 运行参数（JSON） */
+    private String runParamsJson;
+
+    /** 修改说明 */
+    private String changeSummary;
+
+    /** 创建人用户 ID */
+    private Long createdBy;
 
     private LocalDateTime createdAt;
 }

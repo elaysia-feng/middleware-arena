@@ -23,6 +23,9 @@ public class NotificationRequest {
     /** 来源类型：experiment / order / system */
     private String sourceType;
 
+    /** 来源记录 ID（如实验 taskId / 订单号），便于跳转与去重 */
+    private Long sourceId;
+
     /** 通知标题 */
     private String title;
 

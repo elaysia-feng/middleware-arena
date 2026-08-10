@@ -9,7 +9,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -36,11 +35,13 @@ public class Order {
 
     private Integer quantity;
 
-    private BigDecimal amount;
+    /** 下单时商品单价快照（单位：分），商品改价不影响历史订单 */
+    private Long unitPrice;
+
+    /** 总金额（单位：分）= unitPrice × quantity */
+    private Long amount;
 
     private String status;
-
-    private String requestId;
 
     private LocalDateTime createdAt;
 

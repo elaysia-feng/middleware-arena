@@ -5,8 +5,6 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
-import java.math.BigDecimal;
-
 /**
  * 调用 account-service 的 OpenFeign 客户端（框架占位）。
  * <p>
@@ -20,10 +18,10 @@ public interface AccountClient {
      * 扣减余额。
      *
      * @param userId 用户 ID
-     * @param amount 扣减金额
+     * @param amount 扣减金额（单位：分）
      * @return 扣减结果（余额不足时 account 侧抛 ApiException，Feign 透传）
      */
     @PostMapping("/account/deduct")
     ApiResponse<Void> deductBalance(@RequestParam("userId") Long userId,
-                                    @RequestParam("amount") BigDecimal amount);
+                                    @RequestParam("amount") Long amount);
 }

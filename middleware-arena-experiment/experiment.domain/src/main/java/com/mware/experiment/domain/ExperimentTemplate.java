@@ -13,10 +13,10 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * 实验模板实体：定义实验步骤 / 参数 / 中间件组合。
+ * 实验模板实体：只描述"这是什么实验"（纯元数据）。
  * <p>
- * 字段对齐 sql/init.sql 的 experiment_template 表；
- * configJson 存代码文件树 + 运行参数（JSON），对应前端 demo 的 editor.html。
+ * 版本内容（代码文件快照 / 运行参数）不落在模板上，只存在 {@link ExperimentVersion}；
+ * 模板仅保存 {@code latestVersionId} 指向最新版本，避免重复保存"最新完整快照"。
  */
 @Data
 @TableName("experiment_template")
@@ -44,8 +44,13 @@ public class ExperimentTemplate {
     /** 标签（逗号分隔），对应场景卡片 tag：如 "缓存命中率,热点 Key" */
     private String tags;
 
-    /** 实验配置（JSON）：代码文件树 + 运行参数 */
-    private String configJson;
+    /** 模板状态：DRAFT / ENABLED / DISABLED，控制场景卡片是否可见 */
+    private String status;
+
+    /** 当前最新版本 ID（experiment_version.id），新建版本时更新 */
+    private Long latestVersionId;
 
     private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
 }

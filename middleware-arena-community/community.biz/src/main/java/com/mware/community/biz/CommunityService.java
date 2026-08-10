@@ -3,6 +3,7 @@ package com.mware.community.biz;
 import com.mware.community.dto.request.CommentRequest;
 import com.mware.community.dto.request.CreatePostRequest;
 import com.mware.community.dto.response.CommentResponse;
+import com.mware.community.dto.response.LikeStatusResponse;
 import com.mware.community.dto.response.PostResponse;
 
 import java.util.List;
@@ -36,8 +37,11 @@ public interface CommunityService {
     /** 帖子评论分页 */
     List<CommentResponse> pageComments(Long postId, int page, int size);
 
-    /** 点赞 / 取消点赞（Redis 计数 + 异步持久化） */
+    /** 点赞 / 取消点赞（事务性 Outbox：post_like 事实 + event_outbox 事件同事务双写，异步聚合计数） */
     void like(Long postId, Long userId);
+
+    /** 点赞状态（liked 读 Redis 集合 / Bitmap，likeCount 读 Redis 缓存，最终一致） */
+    LikeStatusResponse likeStatus(Long postId);
 
     /** 收藏 / 取消收藏 */
     void favorite(Long postId, Long userId);
