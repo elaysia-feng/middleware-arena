@@ -45,3 +45,62 @@ management:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+# ============================================================
+# Runner 运行配置（资源优先：先抢资源再建容器）
+# 设计对齐：公共镜像常驻磁盘、实验环境按任务临时启动、baseline/candidate 串行、跑完即清理。
+# 绑定见 runner.biz 的 RunnerProperties（@ConfigurationProperties(prefix="ma.runner")）。
+# ============================================================
+ma:
+  runner:
+    docker:
+      binary: docker
+      host: ${DOCKER_HOST:unix:///var/run/docker.sock}
+      command-timeout-seconds: 120
+      container-prefix: ma-task
+    # 平台全局资源上限（防大量普通用户把机器吃爆；真正建容器的最后防线是 --memory/--cpus）
+    platform:
+      max-concurrent: 3
+      max-cpus: 4.0
+      max-memory-mb: 8192
+      acquire-timeout-ms: 30000
+    # 各 tier 单实验额度
+    tiers:
+      free:
+        cpus: 1.0
+        memory-mb: 1024
+      vip:
+        cpus: 2.0
+        memory-mb: 3072
+    # 公共实验镜像（镜像常驻磁盘，按任务临时起容器）
+    images:
+      redis: redis:7
+      rabbitmq: rabbitmq:management
+      elasticsearch: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+      seata: seataio/seata-server:2.1.0
+      mysql: mysql:8.0
+      k6: grafana/k6:0.47.0
+      probe: curlimages/curl:8.5.0
+      baseline-prefix: "ma-"
+      baseline-suffix: ":v1"
+    # k6 压测档位（第一版从轻；VIP 再开放 50/100/200 VU、更长 duration）
+    k6:
+      work-dir: /tmp/ma-k6
+      smoke-vus: 5
+      smoke-seconds: 10
+      warmup-vus: 10
+      warmup-seconds: 20
+      formal-vus: 20
+      formal-seconds: 30
+    # 用户 SUT 的构建环境（离线编译，对应 CLAUDE.md 约束）
+    build:
+      work-dir: /var/lib/ma-runner/work
+      template-dir: /var/lib/ma-runner/templates
+      maven: /usr/local/maven/bin/mvn
+      jdk-home: /usr/local/jdk
+      local-repo: /usr/local/maven/repo
+      offline: true
+    # 阶段进度回传（TODO：接入 MQ/Feign 后 enabled=true）
+    progress:
+      enabled: false
+      target: mq

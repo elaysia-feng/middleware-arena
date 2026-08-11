@@ -1,13 +1,24 @@
 package com.mware.runner.biz.service.impl;
 
+import com.mware.runner.biz.benchmark.K6Runner;
+import com.mware.runner.biz.build.SutBuilder;
 import com.mware.runner.biz.config.InstanceInfo;
+import com.mware.runner.biz.config.RunnerProperties;
 import com.mware.runner.biz.config.RunnerRedisKeys;
 import com.mware.runner.biz.config.RunningTaskManager;
 import com.mware.runner.biz.config.RunnerTaskExecutorConfig;
+import com.mware.runner.biz.docker.DockerService;
+import com.mware.runner.biz.docker.ExperimentEnvironment;
+import com.mware.runner.biz.docker.ExperimentType;
+import com.mware.runner.biz.metrics.MetricsCollector;
+import com.mware.runner.biz.progress.ProgressReporter;
+import com.mware.runner.biz.scheduler.ResourceBusyException;
+import com.mware.runner.biz.scheduler.ResourceScheduler;
 import com.mware.runner.biz.service.RunnerService;
 import com.mware.runner.dto.RunnerTaskMessage;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -19,10 +30,22 @@ import java.util.concurrent.Future;
 /**
  * Runner 业务实现（无持久化实体，不注入任何 Mapper）。
  * <p>
- * TODO[Runner]：接入 RabbitMQ + docker + k6 后，按各方法步骤逐个实现；
- * 每阶段结束后回传进度（MQ / Feign 通知 experiment 更新 ExperimentTask）。
+ * 核心方案（资源优先）：
+ * <pre>
+ *   execute(task) {
+ *       resourceScheduler.acquire(task);   // 先抢资源，不足 → 重新排队，绝不建容器
+ *       try {
+ *           build → run → waitHealthy → benchmark → collectMetrics
+ *       } finally {
+ *           cleanup; resourceScheduler.release(task);
+ *       }
+ *   }
+ * </pre>
+ * 各阶段委托给对应框架类（SutBuilder / ExperimentEnvironment / K6Runner / MetricsCollector /
+ * ProgressReporter），本类只做编排；阶段进度经 ProgressReporter 回传 experiment 更新 ExperimentTask。
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class RunnerServiceImpl implements RunnerService {
 
@@ -39,43 +62,85 @@ public class RunnerServiceImpl implements RunnerService {
     /** Redis 模板：任务实例登记 / 任务结束后反登记 */
     private final StringRedisTemplate stringRedisTemplate;
 
+    /** 平台资源调度器：先抢资源再进流水线（"有资源才启动"） */
+    private final ResourceScheduler resourceScheduler;
+
+    /** 用户代码 → candidate SUT 镜像（baseline 用预构建镜像） */
+    private final SutBuilder sutBuilder;
+
+    /** 实验容器环境编排：建网络 + 按类型起中间件/SUT + 清理 */
+    private final ExperimentEnvironment experimentEnvironment;
+
+    /** docker CLI 封装（镜像名 / 命名契约复用） */
+    private final DockerService dockerService;
+
+    /** k6 压测 */
+    private final K6Runner k6Runner;
+
+    /** 指标采集 */
+    private final MetricsCollector metricsCollector;
+
+    /** 阶段进度回传 */
+    private final ProgressReporter progressReporter;
+
+    /** Runner 配置（镜像名 / 资源额度等） */
+    private final RunnerProperties properties;
+
     @Override
     public RunnerTaskMessage build(RunnerTaskMessage message) {
-        // TODO[Runner]：构建中间件镜像 / 二进制
-        // 1. 解析 filesJson / runParamsJson 决定中间件类型与版本（docker build / 拉取固定版本镜像）
-        // 2. 记录构建产物，回传阶段进度 BUILDING
+        progressReporter.stage(message, "BUILDING");
+        ExperimentType type = ExperimentType.from(message.getMiddlewareType());
+        // 构建 candidate SUT 镜像（baseline 用预构建镜像）；镜像名 ma-task-{taskId}-sut
+        // 确定性生成，run() 按同一规则取用，无需在消息间传递构建产物。
+        sutBuilder.build(message, type);
         return message;
     }
 
     @Override
     public RunnerTaskMessage run(RunnerTaskMessage message) {
-        // TODO[Runner]：启动 Docker 容器
-        // 1. 用构建产物 + runParamsJson 启动容器（Docker SDK / docker CLI）
-        // 2. 端口冲突 / 资源不足须捕获并回传 FAILED + errorMessage
+        progressReporter.stage(message, "RUNNING");
+        ExperimentType type = ExperimentType.from(message.getMiddlewareType());
+        String sutImage = Boolean.TRUE.equals(message.getBaseline())
+                ? type.baselineImage(properties.getImages())
+                : dockerService.sutImageName(message.getTaskId());
+        String baseUrl = experimentEnvironment.start(message, type, sutImage);
+        // TODO[Runner]：baseUrl 需要跨阶段传给 benchmark/collectMetrics，
+        // 引入 TaskContext（ConcurrentHashMap<taskId, ctx>）或在消息上挂载运行上下文
+        logStage(message, "RUNNING", "sutUrl=" + baseUrl);
+        return message;
+    }
+
+    @Override
+    public RunnerTaskMessage waitHealthy(RunnerTaskMessage message) {
+        progressReporter.stage(message, "WAITING_HEALTH");
+        ExperimentType type = ExperimentType.from(message.getMiddlewareType());
+        // TODO[Runner]：DockerService.waitHealthy 轮询 /actuator/health（超时时间来自 runParamsJson）；
+        // 不健康则回传 FAILED + errorMessage，不进入压测
         return message;
     }
 
     @Override
     public RunnerTaskMessage benchmark(RunnerTaskMessage message) {
-        // TODO[Runner]：执行 k6 压测
-        // 1. 由 runParamsJson 生成 k6 脚本（并发阶梯、阶段时长、超时来自 runParamsJson）
-        // 2. 以子进程 / 容器执行 k6，回传阶段进度 BENCHMARKING
+        progressReporter.stage(message, "BENCHMARKING");
+        ExperimentType type = ExperimentType.from(message.getMiddlewareType());
+        // TODO[Runner]：k6 临时容器压测（smoke → warmup → 正式），见 K6Runner
         return message;
     }
 
     @Override
     public RunnerTaskMessage collectMetrics(RunnerTaskMessage message) {
-        // TODO[Runner]：采集指标
-        // 1. 解析 k6 输出（吞吐 / 错误率 / P95 延迟 / 并发）+ 系统指标（CPU / 内存）
-        // 2. 回传 experiment 持久化到 ExperimentResult（结构化字段 + metricsJson）
+        progressReporter.stage(message, "COLLECTING");
+        ExperimentType type = ExperimentType.from(message.getMiddlewareType());
+        // TODO[Runner]：解析 k6 summary.json + docker stats，回传 experiment 持久化，见 MetricsCollector
         return message;
     }
 
     @Override
     public void cleanup(RunnerTaskMessage message) {
-        // TODO[Runner]：清理资源
-        // 1. 停止容器、删除临时镜像、释放端口
-        // 2. 删除临时 k6 脚本文件
+        progressReporter.stage(message, "CLEANING");
+        ExperimentType type = ExperimentType.from(message.getMiddlewareType());
+        // 清理临时容器 + 实验网络（幂等容忍不存在）；k6 --rm 容器跑完自删
+        experimentEnvironment.teardown(message, type);
     }
 
     @Override
@@ -91,13 +156,25 @@ public class RunnerServiceImpl implements RunnerService {
         // RunningTaskManager 与 Redis 均不残留。
         Future<?> future = runnerTaskExecutor.submit(() -> {
             try {
-                build(message);
-                run(message);
-                benchmark(message);
-                collectMetrics(message);
-                // 流水线收尾：停止容器 / 删临时镜像 / 释放端口（取消中断时 finally 仍执行）
-                cleanup(message);
+                // 资源不足（ResourceBusyException）→ 重新排队，不创建容器
+                resourceScheduler.acquire(message);
+                try {
+                    build(message);
+                    run(message);
+                    waitHealthy(message);
+                    benchmark(message);
+                    collectMetrics(message);
+                } finally {
+                    // 流水线收尾：停止容器 / 删临时镜像 / 释放端口（取消中断时 finally 仍执行）
+                    cleanup(message);
+                }
+            } catch (ResourceBusyException e) {
+                // TODO[Runner]：平台资源不足 → 把任务重新投回 runner.task.queue（延迟重投），
+                // 保留消息在队列等资源，而不是像普通异常那样重试 3 次后进 DLQ；
+                // 需在 TaskConsumer 识别本异常走 requeue-with-delay 分支
+                log.warn("平台资源不足，任务待重投：{}", e.getMessage());
             } finally {
+                resourceScheduler.release(message);   // 幂等：未 acquire 时为 no-op
                 runningTaskManager.remove(String.valueOf(taskId));
                 stringRedisTemplate.delete(RunnerRedisKeys.instanceKey(taskId));
             }
@@ -137,5 +214,9 @@ public class RunnerServiceImpl implements RunnerService {
         stringRedisTemplate.delete(RunnerRedisKeys.instanceKey(taskId));
 
         return cancelled;
+    }
+
+    private void logStage(RunnerTaskMessage message, String stage, String detail) {
+        log.info("阶段完成 taskId={}, stage={}, {}", message.getTaskId(), stage, detail);
     }
 }

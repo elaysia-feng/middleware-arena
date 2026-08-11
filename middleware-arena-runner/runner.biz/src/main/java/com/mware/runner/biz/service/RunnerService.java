@@ -17,6 +17,9 @@ public interface RunnerService {
     /** 启动 Docker 容器 */
     RunnerTaskMessage run(RunnerTaskMessage message);
 
+    /** 等待 SUT 健康检查通过（/actuator/health），健康前不进入压测 */
+    RunnerTaskMessage waitHealthy(RunnerTaskMessage message);
+
     /** 执行 k6 压测（HTTP / gRPC / TCP） */
     RunnerTaskMessage benchmark(RunnerTaskMessage message);
 

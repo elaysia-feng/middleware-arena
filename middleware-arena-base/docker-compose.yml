@@ -1,11 +1,18 @@
-# Middleware Arena — Docker Compose（16GB 内存按 Profile 分场景启停）
+# Middleware Arena — Docker Compose（按 Profile 分场景启停）
 # 用法：
-#   docker compose --profile base up -d --build   # 基础模式：mysql/redis/nacos/gateway/auth
-#   docker compose --profile full up -d --build   # 全部服务（演示用，资源预算见注释）
-#   docker compose down                            # 停止
+#   docker compose --profile base up -d --build      # 基础模式：mysql/redis/nacos/gateway/auth
+#   docker compose --profile platform up -d --build  # 平台模式（长期运行）：+ rabbitmq/experiment/runner
+#   docker compose --profile full up -d --build      # 全部服务（演示用，资源预算见注释）
+#   docker compose down                              # 停止
 #
 # 构建策略：先在主机用 JDK21 构建各服务（mvn package），再 docker build 打镜像。
 # 各服务仓库与本仓库是同级目录（../middleware-arena-xxx 作为 build context）。
+#
+# 资源策略（Runner 资源优先方案）：
+#   - platform 长期运行：gateway / auth / experiment / runner + mysql / redis / rabbitmq / nacos
+#   - 实验环境（实验 Redis/MQ/ES/Seata/SUT/k6）不在此常驻：镜像预下载
+#     （scripts/prepull-images.ps1），由 Runner 按任务临时起独立网络 + 容器，
+#     压测完即删（见 runner 的 ma.runner.* 配置与 RunnerServiceImpl）。
 
 name: middleware-arena
 
@@ -21,7 +28,7 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
     mem_limit: 1g
-    profiles: ["base", "full"]
+    profiles: ["base", "platform", "full"]
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot123"]
       interval: 10s
@@ -33,7 +40,16 @@ services:
     ports:
       - "6379:6379"
     mem_limit: 512m
-    profiles: ["base", "full"]
+    profiles: ["base", "platform", "full"]
+
+  rabbitmq:
+    image: rabbitmq:management
+    container_name: ma-rabbitmq
+    ports:
+      - "5672:5672"    # AMQP（runner 任务队列 / 业务消息）
+      - "15672:15672"  # 管理台 http://localhost:15672
+    mem_limit: 512m
+    profiles: ["base", "platform", "full"]
 
   nacos:
     image: nacos/nacos-server:v2.3.2
@@ -44,7 +60,7 @@ services:
       - "8848:8848"   # 控制台: http://localhost:8848/nacos
       - "9848:9848"   # gRPC
     mem_limit: 1g
-    profiles: ["base", "full"]
+    profiles: ["base", "platform", "full"]
 
   gateway:
     build: ../middleware-arena-gateway
@@ -56,7 +72,7 @@ services:
     ports:
       - "8000:8000"
     mem_limit: 512m
-    profiles: ["base", "full"]
+    profiles: ["base", "platform", "full"]
 
   auth:
     build: ../middleware-arena-auth
@@ -68,9 +84,41 @@ services:
     ports:
       - "9001:9001"
     mem_limit: 512m
-    profiles: ["base", "full"]
+    profiles: ["base", "platform", "full"]
 
-  # ===== 以下为 full 模式预留（本轮仅写配置，未保证全部启动）=====
+  # ===== 平台业务服务（platform / full 模式长期运行）=====
+  experiment:
+    build: ../middleware-arena-experiment
+    container_name: ma-experiment
+    environment:
+      NACOS_ADDR: nacos:8848
+    depends_on:
+      - nacos
+      - rabbitmq
+    ports:
+      - "9003:9003"
+    mem_limit: 512m
+    profiles: ["platform", "full"]
+
+  runner:
+    build: ../middleware-arena-runner
+    container_name: ma-runner
+    environment:
+      NACOS_ADDR: nacos:8848
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ma-runner-work:/var/lib/ma-runner/work
+      - ma-runner-k6:/tmp/ma-k6
+    depends_on:
+      - nacos
+      - rabbitmq
+    ports:
+      - "9004:9004"
+    mem_limit: 1g
+    profiles: ["platform", "full"]
+
+  # ===== 以下为 full 模式预留（演示用，未保证全部启动）=====
   community:
     build: ../middleware-arena-community
     container_name: ma-community
@@ -81,30 +129,6 @@ services:
     ports:
       - "9002:9002"
     mem_limit: 512m
-    profiles: ["full"]
-
-  experiment:
-    build: ../middleware-arena-experiment
-    container_name: ma-experiment
-    environment:
-      NACOS_ADDR: nacos:8848
-    depends_on:
-      - nacos
-    ports:
-      - "9003:9003"
-    mem_limit: 512m
-    profiles: ["full"]
-
-  runner:
-    build: ../middleware-arena-runner
-    container_name: ma-runner
-    environment:
-      NACOS_ADDR: nacos:8848
-    depends_on:
-      - nacos
-    ports:
-      - "9004:9004"
-    mem_limit: 1g
     profiles: ["full"]
 
   notification:
@@ -170,7 +194,9 @@ services:
     mem_limit: 1g
     profiles: ["full"]
 
-  # TODO[Elasticsearch 搜索实验]：单节点、堆≤1GB、关安全特性，full 模式预留
+  # TODO[Elasticsearch 搜索实验]：单节点、堆≤1GB、关安全特性，full 模式预留。
+  # 注意：这是平台演示用 ES；Runner 的 ES 实验会为每个任务另起独立 ES 容器
+  # （ma.runner.images.elasticsearch），不与本服务共用。
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
     container_name: ma-es
@@ -185,3 +211,5 @@ services:
 
 volumes:
   mysql-data:
+  ma-runner-work:
+  ma-runner-k6:

@@ -33,4 +33,20 @@ public class RunnerTaskMessage {
 
     /** task 类型：CREATE（创建执行） / CANCEL（取消）等 */
     private String taskType;
+
+    /**
+     * 中间件类型（redis / rabbitmq / elasticsearch / seata），决定实验容器拓扑，
+     * 见 {@code ExperimentType}。可选：experiment 侧模板已有 {@code middlewareType}，
+     * 投递时应带上；未带时回退 {@code ExperimentType.UNKNOWN}（TODO：从 runParamsJson 兜底解析）。
+     */
+    private String middlewareType;
+
+    /** 资源等级（FREE / VIP），决定单实验 CPU/内存额度，缺省按 FREE（见 ResourceScheduler） */
+    private String tier;
+
+    /**
+     * 是否 baseline 预构建镜像任务：true=用预构建 {@code ma-{type}-baseline:v1}，跳过现场编译；
+     * false/缺省=现场 build candidate SUT。baseline / candidate 串行压测（不并行），由 experiment 侧编排。
+     */
+    private Boolean baseline;
 }
