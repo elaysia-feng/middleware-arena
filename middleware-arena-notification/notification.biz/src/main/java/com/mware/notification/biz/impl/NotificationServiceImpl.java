@@ -1,5 +1,6 @@
-package com.mware.notification.biz;
+package com.mware.notification.biz.impl;
 
+import com.mware.notification.biz.NotificationService;
 import com.mware.notification.domain.Notification;
 import com.mware.notification.dto.request.NotificationRequest;
 import com.mware.notification.dto.response.NotificationResponse;

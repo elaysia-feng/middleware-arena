@@ -1,7 +1,7 @@
 package com.mware.runner.biz.consumer;
 
-import com.mware.runner.biz.config.InstanceInfo;
-import com.mware.runner.biz.service.RunnerService;
+import com.mware.runner.biz.execution.InstanceInfo;
+import com.mware.runner.biz.execution.RunnerService;
 import com.mware.runner.dto.RunnerTaskMessage;
 
 import com.rabbitmq.client.Channel;

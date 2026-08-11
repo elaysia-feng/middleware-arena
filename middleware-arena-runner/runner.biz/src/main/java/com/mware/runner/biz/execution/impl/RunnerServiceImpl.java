@@ -1,20 +1,19 @@
-package com.mware.runner.biz.service.impl;
+package com.mware.runner.biz.execution.impl;
 
 import com.mware.runner.biz.benchmark.K6Runner;
 import com.mware.runner.biz.build.SutBuilder;
-import com.mware.runner.biz.config.InstanceInfo;
+import com.mware.runner.biz.config.ResourceBusyException;
 import com.mware.runner.biz.config.RunnerProperties;
 import com.mware.runner.biz.config.RunnerRedisKeys;
-import com.mware.runner.biz.config.RunningTaskManager;
 import com.mware.runner.biz.config.RunnerTaskExecutorConfig;
 import com.mware.runner.biz.docker.DockerService;
 import com.mware.runner.biz.docker.ExperimentEnvironment;
-import com.mware.runner.biz.docker.ExperimentType;
+import com.mware.runner.biz.execution.InstanceInfo;
+import com.mware.runner.biz.execution.RunningTaskManager;
+import com.mware.runner.biz.execution.RunnerService;
 import com.mware.runner.biz.metrics.MetricsCollector;
 import com.mware.runner.biz.progress.ProgressReporter;
-import com.mware.runner.biz.scheduler.ResourceBusyException;
 import com.mware.runner.biz.scheduler.ResourceScheduler;
-import com.mware.runner.biz.service.RunnerService;
 import com.mware.runner.dto.RunnerTaskMessage;
 
 import lombok.RequiredArgsConstructor;
@@ -89,31 +88,23 @@ public class RunnerServiceImpl implements RunnerService {
     @Override
     public RunnerTaskMessage build(RunnerTaskMessage message) {
         progressReporter.stage(message, "BUILDING");
-        ExperimentType type = ExperimentType.from(message.getMiddlewareType());
-        // 构建 candidate SUT 镜像（baseline 用预构建镜像）；镜像名 ma-task-{taskId}-sut
-        // 确定性生成，run() 按同一规则取用，无需在消息间传递构建产物。
-        sutBuilder.build(message, type);
+        // TODO[Runner]：调 SutBuilder——baseline 用预构建镜像、candidate 现场编译构建
+        // ma-task-{taskId}-sut 镜像（镜像名确定性生成，run() 按同一规则取用）。
         return message;
     }
 
     @Override
     public RunnerTaskMessage run(RunnerTaskMessage message) {
         progressReporter.stage(message, "RUNNING");
-        ExperimentType type = ExperimentType.from(message.getMiddlewareType());
-        String sutImage = Boolean.TRUE.equals(message.getBaseline())
-                ? type.baselineImage(properties.getImages())
-                : dockerService.sutImageName(message.getTaskId());
-        String baseUrl = experimentEnvironment.start(message, type, sutImage);
-        // TODO[Runner]：baseUrl 需要跨阶段传给 benchmark/collectMetrics，
-        // 引入 TaskContext（ConcurrentHashMap<taskId, ctx>）或在消息上挂载运行上下文
-        logStage(message, "RUNNING", "sutUrl=" + baseUrl);
+        // TODO[Runner]：按类型起实验环境（ExperimentEnvironment.start，baseline 用预构建镜像 /
+        // candidate 用 build 产物镜像），得到 baseUrl；baseUrl 需跨阶段传给
+        // benchmark/collectMetrics——引入 TaskContext（taskId → ctx）或在消息上挂载运行上下文。
         return message;
     }
 
     @Override
     public RunnerTaskMessage waitHealthy(RunnerTaskMessage message) {
         progressReporter.stage(message, "WAITING_HEALTH");
-        ExperimentType type = ExperimentType.from(message.getMiddlewareType());
         // TODO[Runner]：DockerService.waitHealthy 轮询 /actuator/health（超时时间来自 runParamsJson）；
         // 不健康则回传 FAILED + errorMessage，不进入压测
         return message;
@@ -122,7 +113,6 @@ public class RunnerServiceImpl implements RunnerService {
     @Override
     public RunnerTaskMessage benchmark(RunnerTaskMessage message) {
         progressReporter.stage(message, "BENCHMARKING");
-        ExperimentType type = ExperimentType.from(message.getMiddlewareType());
         // TODO[Runner]：k6 临时容器压测（smoke → warmup → 正式），见 K6Runner
         return message;
     }
@@ -130,7 +120,6 @@ public class RunnerServiceImpl implements RunnerService {
     @Override
     public RunnerTaskMessage collectMetrics(RunnerTaskMessage message) {
         progressReporter.stage(message, "COLLECTING");
-        ExperimentType type = ExperimentType.from(message.getMiddlewareType());
         // TODO[Runner]：解析 k6 summary.json + docker stats，回传 experiment 持久化，见 MetricsCollector
         return message;
     }
@@ -138,9 +127,8 @@ public class RunnerServiceImpl implements RunnerService {
     @Override
     public void cleanup(RunnerTaskMessage message) {
         progressReporter.stage(message, "CLEANING");
-        ExperimentType type = ExperimentType.from(message.getMiddlewareType());
-        // 清理临时容器 + 实验网络（幂等容忍不存在）；k6 --rm 容器跑完自删
-        experimentEnvironment.teardown(message, type);
+        // TODO[Runner]：清理临时容器 + 实验网络（ExperimentEnvironment.teardown，幂等容忍不存在）；
+        // k6 --rm 容器跑完自删
     }
 
     @Override

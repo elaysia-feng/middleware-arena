@@ -1,5 +1,6 @@
-package com.mware.account.biz;
+package com.mware.account.biz.impl;
 
+import com.mware.account.biz.AccountService;
 import com.mware.account.domain.AccountBalance;
 import com.mware.account.mapper.AccountBalanceMapper;
 import org.springframework.stereotype.Service;

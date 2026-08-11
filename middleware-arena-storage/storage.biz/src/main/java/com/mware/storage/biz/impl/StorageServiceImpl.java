@@ -1,5 +1,6 @@
-package com.mware.storage.biz;
+package com.mware.storage.biz.impl;
 
+import com.mware.storage.biz.StorageService;
 import com.mware.storage.domain.Stock;
 import com.mware.storage.mapper.StockMapper;
 import org.springframework.stereotype.Service;

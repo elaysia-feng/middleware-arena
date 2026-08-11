@@ -1,27 +1,35 @@
-package com.mware.runner.biz.config;
+package com.mware.runner.biz.execution.impl;
+
+import com.mware.runner.biz.execution.RunningTaskManager;
+import org.springframework.stereotype.Component;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 
-import org.springframework.stereotype.Component;
-
+/**
+ * 本地运行任务登记表实现：ConcurrentHashMap&lt;taskId, Future&gt;。
+ */
 @Component
-public class RunningTaskManager {
+public class RunningTaskManagerImpl implements RunningTaskManager {
 
     private final ConcurrentHashMap<String, Future<?>> runningTasks = new ConcurrentHashMap<>();
 
+    @Override
     public void register(String taskId, Future<?> future) {
         runningTasks.put(taskId, future);
     }
 
+    @Override
     public Future<?> get(String taskId) {
         return runningTasks.get(taskId);
     }
 
+    @Override
     public void remove(String taskId) {
         runningTasks.remove(taskId);
     }
 
+    @Override
     public boolean cancel(String taskId) {
         Future<?> future = runningTasks.get(taskId);
 

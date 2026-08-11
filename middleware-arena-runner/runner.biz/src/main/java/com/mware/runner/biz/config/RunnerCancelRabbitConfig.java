@@ -1,5 +1,7 @@
 package com.mware.runner.biz.config;
 
+import com.mware.runner.biz.execution.InstanceInfo;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;

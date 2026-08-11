@@ -1,4 +1,4 @@
-package com.mware.runner.biz.scheduler;
+package com.mware.runner.biz.config;
 
 /**
  * 平台资源不足时抛出：表示任务未获得容器资源，绝不能创建容器。

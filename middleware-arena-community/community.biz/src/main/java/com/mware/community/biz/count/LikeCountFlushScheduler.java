@@ -1,14 +1,5 @@
 package com.mware.community.biz.count;
 
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.mware.community.domain.CommunityPost;
-import com.mware.community.mapper.CommunityPostMapper;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
-
-import java.util.Map;
-
 /**
  * 点赞计数刷库调度器：把 Redis 待刷增量（like:counter:pending）批量写入 community_post.like_count。
  * <p>
@@ -25,27 +16,8 @@ import java.util.Map;
  * 失败补偿：UPDATE 抛异常时当前实现会丢失该批增量（Redis 已 DEL）——
  * TODO[补偿]：逐条回滚到 pending（HINCRBY 加回 delta），或改为「update 失败不 DEL」的两阶段取数。
  */
-@Component
-@Slf4j
-public class LikeCountFlushScheduler {
+public interface LikeCountFlushScheduler {
 
-    private final LikePendingCounter pendingCounter;
-    private final CommunityPostMapper communityPostMapper;
-
-    public LikeCountFlushScheduler(LikePendingCounter pendingCounter, CommunityPostMapper communityPostMapper) {
-        this.pendingCounter = pendingCounter;
-        this.communityPostMapper = communityPostMapper;
-    }
-
-    @Scheduled(fixedDelayString = "${community.outbox.flush-interval-ms:10000}")
-    public void flush() {
-        Map<Long, Long> deltas = pendingCounter.drainAndReset();
-        if (deltas.isEmpty()) {
-            return;
-        }
-        log.info("flush {} like-count deltas to community_post", deltas.size());
-        deltas.forEach((postId, delta) -> communityPostMapper.update(null, new LambdaUpdateWrapper<CommunityPost>()
-                .eq(CommunityPost::getId, postId)
-                .setSql("like_count = like_count + " + delta)));
-    }
+    /** 定时批量刷待刷计数到 community_post.like_count（@Scheduled 触发） */
+    void flush();
 }

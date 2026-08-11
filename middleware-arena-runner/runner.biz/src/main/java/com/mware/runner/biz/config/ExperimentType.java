@@ -1,6 +1,4 @@
-package com.mware.runner.biz.docker;
-
-import com.mware.runner.biz.config.RunnerProperties;
+package com.mware.runner.biz.config;
 
 import java.util.Map;
 
@@ -9,13 +7,16 @@ import java.util.Map;
  * （redis / rabbitmq / elasticsearch / seata）。
  * <p>
  * {@code run()} 按类型只启动本实验需要的组件（对齐"实验环境按任务临时启动"）：
+ * 
  * <pre>
  *   REDIS        : mysql + redis          + product-SUT
  *   RABBITMQ     : mysql + rabbitmq       + order-SUT
  *   ELASTICSEARCH: elasticsearch          + search-SUT
  *   SEATA        : mysql + seata          + order/storage/account 三 SUT（TODO 拆多 SUT 角色）
  * </pre>
- * 镜像不在本类硬编码：{@code middlewareImages} 的 value 是 {@link RunnerProperties.Images} 的字段名，
+ * 
+ * 镜像不在本类硬编码：{@code middlewareImages} 的 value 是 {@link RunnerProperties.Images}
+ * 的字段名，
  * 由配置决定实际 tag（镜像常驻磁盘、按任务临时起容器）。
  */
 public enum ExperimentType {

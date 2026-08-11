@@ -1,6 +1,7 @@
-package com.mware.community.biz;
+package com.mware.community.biz.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mware.community.biz.CommunityService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mware.common.web.ApiException;

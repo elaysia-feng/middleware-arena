@@ -1,4 +1,4 @@
-package com.mware.runner.biz.scheduler;
+package com.mware.runner.biz.config;
 
 /**
  * 资源等级。等级决定单实验可用的 CPU / 内存额度（额度见 {@link com.mware.runner.biz.config.RunnerProperties.Tiers}）。
