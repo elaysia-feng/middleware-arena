@@ -11,7 +11,7 @@ import com.mware.runner.dto.RunnerTaskMessage;
  */
 public interface RunnerService {
 
-    /** 根据 filesJson / runParamsJson 构建中间件镜像 / 二进制 */
+    /** 根据 OSS 版本文件 / runParamsJson 构建中间件镜像 / 二进制 */
     RunnerTaskMessage build(RunnerTaskMessage message);
 
     /** 启动 Docker 容器 */

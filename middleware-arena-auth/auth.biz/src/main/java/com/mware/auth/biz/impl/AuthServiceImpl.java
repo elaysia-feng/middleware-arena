@@ -7,6 +7,7 @@ import com.mware.auth.dto.request.LoginRequest;
 import com.mware.auth.dto.request.RefreshRequest;
 import com.mware.auth.dto.request.RegisterRequest;
 import com.mware.auth.dto.response.LoginResponse;
+import com.mware.auth.dto.response.MembershipResponse;
 import com.mware.auth.dto.response.UserInfoResponse;
 import com.mware.auth.mapper.UserMapper;
 import com.mware.common.jwt.JwtProperties;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
@@ -57,6 +59,7 @@ public class AuthServiceImpl implements AuthService {
                 .password(passwordEncoder.encode(request.getPassword()))
                 .nickname(request.getNickname() == null || request.getNickname().isBlank()
                         ? request.getUsername() : request.getNickname())
+                .tier("FREE")
                 .build();
         userMapper.insert(user);
 
@@ -107,7 +110,52 @@ public class AuthServiceImpl implements AuthService {
                 .id(user.getId())
                 .username(user.getUsername())
                 .nickname(user.getNickname())
+                .tier(effectiveTier(user, LocalDateTime.now()))
+                .vipExpireAt(user.getVipExpireAt())
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public MembershipResponse mockRecharge(String accessToken) {
+        User user = userMapper.selectById(parseUserId(accessToken));
+        if (user == null) {
+            throw new ApiException(401, "用户不存在");
+        }
+
+        // 1. 未到期从原到期时间续费；已到期从当前时间重新计算。
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime startAt = user.getVipExpireAt() != null && user.getVipExpireAt().isAfter(now)
+                ? user.getVipExpireAt() : now;
+        user.setTier("VIP");
+        user.setVipExpireAt(startAt.plusDays(30));
+        userMapper.updateById(user);
+        return toMembershipResponse(user, now);
+    }
+
+    @Override
+    public MembershipResponse membership(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new ApiException(404, "用户不存在");
+        }
+        return toMembershipResponse(user, LocalDateTime.now());
+    }
+
+    private MembershipResponse toMembershipResponse(User user, LocalDateTime now) {
+        return MembershipResponse.builder()
+                .userId(user.getId())
+                .tier(user.getTier())
+                .effectiveTier(effectiveTier(user, now))
+                .vipExpireAt(user.getVipExpireAt())
+                .build();
+    }
+
+    /** 不修改数据库，所有 VIP 功能入口都根据到期时间实时判断。 */
+    private String effectiveTier(User user, LocalDateTime now) {
+        return "VIP".equalsIgnoreCase(user.getTier())
+                && user.getVipExpireAt() != null
+                && user.getVipExpireAt().isAfter(now) ? "VIP" : "FREE";
     }
 
     /** 解析并校验 accessToken，非法 / 过期统一抛 401 */

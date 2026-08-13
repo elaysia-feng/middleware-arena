@@ -7,12 +7,18 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        server-addr: ${NACOS_ADDR:192.168.0.192:8848}
+    sentinel:
+      eager: true
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:192.168.0.192:8858}
+        client-ip: ${SENTINEL_CLIENT_IP:192.168.0.197}
+        port: ${SENTINEL_PORT:8722}
 
   # Redis：取消任务时查询 runner 任务→实例登记（键名 runner:task:instance:{taskId}），定向投递取消消息
   data:
     redis:
-      host: ${REDIS_HOST:127.0.0.1}
+      host: ${REDIS_HOST:192.168.0.192}
       port: ${REDIS_PORT:6379}
 
   # ============================================================
@@ -22,7 +28,7 @@ spring:
   # 需本地 RabbitMQ 已启动（默认 5672，guest/guest）。
   # ============================================================
   rabbitmq:
-    host: ${RABBIT_HOST:127.0.0.1}
+    host: ${RABBIT_HOST:192.168.0.192}
     port: 5672
     username: ${RABBIT_USER:guest}
     password: ${RABBIT_PASSWORD:guest}
@@ -38,3 +44,12 @@ management:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+ma:
+  internal-token: ${MA_INTERNAL_TOKEN:middleware-arena-internal-token}
+  oss:
+    endpoint: ${OSS_ENDPOINT:https://oss-cn-beijing.aliyuncs.com}
+    bucket: ${OSS_BUCKET:middleware-arena}
+    access-key-id: ${OSS_ACCESS_KEY_ID:}
+    access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
+    max-files-bytes: ${OSS_MAX_FILES_BYTES:10485760}

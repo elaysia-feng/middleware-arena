@@ -13,13 +13,11 @@ public interface MetricsCollector {
 
     /**
      * 采集一次实验的全部指标，返回结构化 metricsJson。
-     *
-     * TODO[Runner]：
      * <ol>
      *   <li>读 {@code k6.work-dir}/summary-{taskId}.json → 吞吐 / 错误率 / P95 延迟 / 并发；</li>
-     *   <li>{@link DockerService#stats} 采集 SUT + 中间件 CPU / 内存快照；</li>
+     *   <li>{@link DockerService#stats} 采集 SUT + 中间件结束时的 CPU / 内存快照；</li>
      *   <li>组装 {@code {"qps":..., "p95Ms":..., "errorRate":..., "cpu":..., "memMb":...}}
-     *       回传 experiment（MQ / Feign）落 ExperimentResult（结构化字段 + metricsJson）。</li>
+     *       供 Runner 流水线回传 experiment。</li>
      * </ol>
      */
     String collect(RunnerTaskMessage message, ExperimentType type);

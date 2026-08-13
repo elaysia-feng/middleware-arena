@@ -35,5 +35,11 @@ public class User {
 
     private String nickname;
 
+    /** 会员标记：FREE / VIP；是否仍有效还要结合 vipExpireAt 实时判断。 */
+    private String tier;
+
+    /** VIP 到期时间；为空或不晚于当前时间时按 FREE 处理。 */
+    private LocalDateTime vipExpireAt;
+
     private LocalDateTime createdAt;
 }

@@ -1,7 +1,7 @@
 -- middleware-arena-experiment 初始化 SQL
 -- 执行：mysql -u root -p < init.sql（接入 MySQL 时建表）
 -- 职责划分：模板=元数据、版本=内容快照、任务=运行状态、结果=压测指标
--- 版本内容（files_json / run_params_json）只存 experiment_version，模板不重复保存最新快照
+-- 版本文件正文存 OSS；experiment_version 保存对象引用和 run_params_json，模板不重复保存快照
 
 -- 实验模板表（只存元数据，@TableName = experiment_template）
 CREATE TABLE IF NOT EXISTS experiment_template
@@ -29,7 +29,10 @@ CREATE TABLE IF NOT EXISTS experiment_version
     id              BIGINT        NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT '版本 ID',
     template_id     BIGINT        NOT NULL COMMENT '所属模板 ID（experiment_template.id）',
     version_no      INT           NOT NULL COMMENT '递增版本号（同模板内唯一，rollbackVersion 依赖）',
-    files_json      TEXT          NULL COMMENT '完整代码文件快照（JSON 数组，editable 白名单内嵌每个文件）',
+    files_json      MEDIUMTEXT    NULL COMMENT '兼容历史数据：改造前的完整文件快照，新版本不再写入',
+    files_object_key VARCHAR(512) NULL COMMENT 'OSS 对象 Key',
+    files_sha256    CHAR(64)      NULL COMMENT 'OSS 对象压缩字节的 SHA-256',
+    files_size      BIGINT        NULL COMMENT 'OSS 对象压缩后的字节数',
     run_params_json TEXT         NULL COMMENT '压测/运行参数（JSON）：concurrencyLadder/duration/timeout/heap 等',
     change_summary  VARCHAR(512)  NULL COMMENT '修改说明',
     created_by      BIGINT        NULL COMMENT '创建人用户 ID',
@@ -48,6 +51,9 @@ CREATE TABLE IF NOT EXISTS experiment_task
     status        VARCHAR(16)  NOT NULL DEFAULT 'QUEUED' COMMENT '任务状态：QUEUED/RUNNING/SUCCESS/FAILED/CANCELLED',
     current_stage VARCHAR(16)  NULL COMMENT '当前阶段：BUILDING/STARTING/BENCHMARKING/COLLECTING/ANALYZING',
     progress      INT          NULL COMMENT '进度 0~100',
+    tier_snapshot VARCHAR(16)  NOT NULL DEFAULT 'FREE' COMMENT '本次入队会员等级快照',
+    dispatch_id   VARCHAR(36)  NULL COMMENT '本次投递唯一标识',
+    error_code    VARCHAR(64)  NULL COMMENT '机器可识别错误码',
     error_message VARCHAR(1024) NULL COMMENT '失败原因（status=FAILED 时有值）',
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     started_at    DATETIME     NULL COMMENT '开始执行时间',

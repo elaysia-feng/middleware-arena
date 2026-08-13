@@ -7,7 +7,17 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        server-addr: ${NACOS_ADDR:192.168.0.192:8848}
+    sentinel:
+      eager: true
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:192.168.0.192:8858}
+        client-ip: ${SENTINEL_CLIENT_IP:192.168.0.197}
+        port: ${SENTINEL_PORT:8725}
+  data:
+    redis:
+      host: ${REDIS_HOST:192.168.0.192}
+      port: ${REDIS_PORT:6379}
   # TODO[Seata 分布式事务]：接入 MySQL 时启用数据源，并把 order.mapper 依赖引入 biz/web
   # datasource:
   #   url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/middleware_arena?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai

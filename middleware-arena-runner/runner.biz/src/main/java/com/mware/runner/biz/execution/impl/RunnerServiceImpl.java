@@ -2,7 +2,7 @@ package com.mware.runner.biz.execution.impl;
 
 import com.mware.runner.biz.benchmark.K6Runner;
 import com.mware.runner.biz.build.SutBuilder;
-import com.mware.runner.biz.config.ResourceBusyException;
+import com.mware.runner.biz.config.ExperimentType;
 import com.mware.runner.biz.config.RunnerProperties;
 import com.mware.runner.biz.config.RunnerRedisKeys;
 import com.mware.runner.biz.config.RunnerTaskExecutorConfig;
@@ -24,6 +24,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 
 /**
@@ -47,6 +49,9 @@ import java.util.concurrent.Future;
 @Slf4j
 @RequiredArgsConstructor
 public class RunnerServiceImpl implements RunnerService {
+
+    /** 各阶段之间传递当前任务的实验类型、镜像和 SUT 地址。 */
+    private final Map<Long, TaskContext> taskContexts = new ConcurrentHashMap<>();
 
     /** 本地运行任务登记表（taskId → Future），取消任务时使用 */
     private final RunningTaskManager runningTaskManager;
@@ -87,86 +92,150 @@ public class RunnerServiceImpl implements RunnerService {
 
     @Override
     public RunnerTaskMessage build(RunnerTaskMessage message) {
+        ExperimentType type = ExperimentType.from(message.getMiddlewareType());
+        if (type == ExperimentType.UNKNOWN) {
+            throw new IllegalArgumentException("不支持的实验类型: " + message.getMiddlewareType());
+        }
+
+        TaskContext context = new TaskContext(type);
+        taskContexts.put(message.getTaskId(), context);
+        context.status = "BUILDING";
         progressReporter.stage(message, "BUILDING");
-        // TODO[Runner]：调 SutBuilder——baseline 用预构建镜像、candidate 现场编译构建
-        // ma-task-{taskId}-sut 镜像（镜像名确定性生成，run() 按同一规则取用）。
+        context.sutImage = sutBuilder.build(message, type);
+        logStage(message, "BUILDING", "image=" + context.sutImage);
         return message;
     }
 
     @Override
     public RunnerTaskMessage run(RunnerTaskMessage message) {
+        TaskContext context = taskContexts.get(message.getTaskId());
+        context.status = "RUNNING";
         progressReporter.stage(message, "RUNNING");
-        // TODO[Runner]：按类型起实验环境（ExperimentEnvironment.start，baseline 用预构建镜像 /
-        // candidate 用 build 产物镜像），得到 baseUrl；baseUrl 需跨阶段传给
-        // benchmark/collectMetrics——引入 TaskContext（taskId → ctx）或在消息上挂载运行上下文。
+        // start 过程中即使部分容器启动后失败，cleanup 也需要执行 teardown。
+        context.environmentStarted = true;
+        context.baseUrl = experimentEnvironment.start(message, context.type, context.sutImage);
+        logStage(message, "RUNNING", "baseUrl=" + context.baseUrl);
         return message;
     }
 
     @Override
     public RunnerTaskMessage waitHealthy(RunnerTaskMessage message) {
+        TaskContext context = taskContexts.get(message.getTaskId());
+        context.status = "WAITING_HEALTH";
         progressReporter.stage(message, "WAITING_HEALTH");
-        // TODO[Runner]：DockerService.waitHealthy 轮询 /actuator/health（超时时间来自 runParamsJson）；
-        // 不健康则回传 FAILED + errorMessage，不进入压测
+        String healthUrl = context.baseUrl + "/actuator/health";
+        boolean healthy = dockerService.waitHealthy(message.getTaskId(), healthUrl,
+                properties.getDocker().getCommandTimeoutSeconds());
+        if (!healthy) {
+            throw new IllegalStateException("SUT 健康检查超时，taskId=" + message.getTaskId());
+        }
+        logStage(message, "WAITING_HEALTH", "healthUrl=" + healthUrl);
         return message;
     }
 
     @Override
     public RunnerTaskMessage benchmark(RunnerTaskMessage message) {
+        TaskContext context = taskContexts.get(message.getTaskId());
+        context.status = "BENCHMARKING";
         progressReporter.stage(message, "BENCHMARKING");
-        // TODO[Runner]：k6 临时容器压测（smoke → warmup → 正式），见 K6Runner
+        k6Runner.run(message, context.type, context.baseUrl);
+        logStage(message, "BENCHMARKING", "k6 completed");
         return message;
     }
 
     @Override
     public RunnerTaskMessage collectMetrics(RunnerTaskMessage message) {
+        TaskContext context = taskContexts.get(message.getTaskId());
+        context.status = "COLLECTING";
         progressReporter.stage(message, "COLLECTING");
-        // TODO[Runner]：解析 k6 summary.json + docker stats，回传 experiment 持久化，见 MetricsCollector
+        context.metricsJson = metricsCollector.collect(message, context.type);
+        logStage(message, "COLLECTING", "metrics=" + context.metricsJson);
         return message;
     }
 
     @Override
     public void cleanup(RunnerTaskMessage message) {
-        progressReporter.stage(message, "CLEANING");
-        // TODO[Runner]：清理临时容器 + 实验网络（ExperimentEnvironment.teardown，幂等容忍不存在）；
-        // k6 --rm 容器跑完自删
+        TaskContext context = taskContexts.get(message.getTaskId());
+        if (context == null) {
+            return;
+        }
+
+        context.status = "CLEANING";
+        try {
+            progressReporter.stage(message, "CLEANING");
+        } catch (RuntimeException e) {
+            // 状态通知失败不能阻止真正的 Docker 清理。
+            log.warn("清理阶段状态回传失败 taskId={}", message.getTaskId(), e);
+        }
+        try {
+            if (context.environmentStarted) {
+                experimentEnvironment.teardown(message, context.type);
+            }
+        } finally {
+            try {
+                // baseline 是公共常驻镜像；只有 candidate 镜像需要按任务删除。
+                if (!Boolean.TRUE.equals(message.getBaseline()) && context.sutImage != null) {
+                    dockerService.removeImage(context.sutImage);
+                }
+            } finally {
+                taskContexts.remove(message.getTaskId());
+            }
+        }
     }
 
     @Override
     public RunnerTaskMessage execute(RunnerTaskMessage message) {
         Long taskId = message.getTaskId();
+        if (taskId == null) {
+            throw new IllegalArgumentException("Runner 任务缺少 taskId");
+        }
+        if (ExperimentType.from(message.getMiddlewareType()) == ExperimentType.UNKNOWN) {
+            throw new IllegalArgumentException("不支持的实验类型: " + message.getMiddlewareType());
+        }
 
-        // 核心方案（T4）：CREATE 时由执行实例主动登记"该任务属于本实例"，
-        // 供 T5 per-instance 定向取消 / 任务归属判断读取（键名契约见 RunnerRedisKeys）。
-        stringRedisTemplate.opsForValue().set(
-                RunnerRedisKeys.instanceKey(taskId), instanceInfo.getInstanceId());
+        // 1. 在消费线程中先获取资源。失败会直接抛给消费者，因此消息不会提前 ACK。
+        resourceScheduler.acquire(message);
 
-        // 提交到自定义线程池执行流水线；finally 反登记，任务结束后
-        // RunningTaskManager 与 Redis 均不残留。
-        Future<?> future = runnerTaskExecutor.submit(() -> {
-            try {
-                // 资源不足（ResourceBusyException）→ 重新排队，不创建容器
-                resourceScheduler.acquire(message);
+        // 2. 获取资源后再登记实例并提交流水线；登记或提交失败时立即归还资源。
+        Future<?> future;
+        try {
+            stringRedisTemplate.opsForValue().set(
+                    RunnerRedisKeys.instanceKey(taskId), instanceInfo.getInstanceId());
+            future = runnerTaskExecutor.submit(() -> {
+                String metricsJson = null;
                 try {
-                    build(message);
-                    run(message);
-                    waitHealthy(message);
-                    benchmark(message);
-                    collectMetrics(message);
-                } finally {
-                    // 流水线收尾：停止容器 / 删临时镜像 / 释放端口（取消中断时 finally 仍执行）
-                    cleanup(message);
+                    try {
+                        // 1. 构建镜像 → 2. 启动环境 → 3. 健康检查 → 4. 压测 → 5. 采集指标。
+                        build(message);
+                        run(message);
+                        waitHealthy(message);
+                        benchmark(message);
+                        collectMetrics(message);
+                        metricsJson = taskContexts.get(taskId).metricsJson;
+                    } finally {
+                        // 6. 无论成功、失败还是取消，都清理实验环境并归还资源。
+                        try {
+                            cleanup(message);
+                        } finally {
+                            resourceScheduler.release(message);
+                            runningTaskManager.remove(String.valueOf(taskId));
+                            stringRedisTemplate.delete(RunnerRedisKeys.instanceKey(taskId));
+                        }
+                    }
+                    // cleanup 也成功后才回传 SUCCESS，避免任务成功但容器仍残留。
+                    progressReporter.completed(message, metricsJson);
+                } catch (RuntimeException e) {
+                    progressReporter.failed(message, e);
+                    log.error("Runner 任务执行失败 taskId={}", taskId, e);
+                    throw e;
                 }
-            } catch (ResourceBusyException e) {
-                // TODO[Runner]：平台资源不足 → 把任务重新投回 runner.task.queue（延迟重投），
-                // 保留消息在队列等资源，而不是像普通异常那样重试 3 次后进 DLQ；
-                // 需在 TaskConsumer 识别本异常走 requeue-with-delay 分支
-                log.warn("平台资源不足，任务待重投：{}", e.getMessage());
-            } finally {
-                resourceScheduler.release(message);   // 幂等：未 acquire 时为 no-op
-                runningTaskManager.remove(String.valueOf(taskId));
-                stringRedisTemplate.delete(RunnerRedisKeys.instanceKey(taskId));
-            }
-        });
+            });
+        } catch (RuntimeException e) {
+            // 线程池拒绝任务时不会进入异步 finally，这里必须立即归还资源和实例登记。
+            resourceScheduler.release(message);
+            stringRedisTemplate.delete(RunnerRedisKeys.instanceKey(taskId));
+            throw e;
+        }
 
         // submit 返回后立刻登记 Future（先 submit 得 future 再 register，
         // 避免 register 在 submit 前拿不到 Future 的竞态窗口）。
@@ -184,9 +253,8 @@ public class RunnerServiceImpl implements RunnerService {
 
     @Override
     public String getTaskStatus(Long taskId) {
-        // TODO[Runner]：runner 无持久化，进度在 experiment-service
-        // 走 Feign 回查 experiment，或返回 null 由调用方决定
-        return null;
+        TaskContext context = taskContexts.get(taskId);
+        return context == null ? null : context.status;
     }
 
     @Override
@@ -206,5 +274,19 @@ public class RunnerServiceImpl implements RunnerService {
 
     private void logStage(RunnerTaskMessage message, String stage, String detail) {
         log.info("阶段完成 taskId={}, stage={}, {}", message.getTaskId(), stage, detail);
+    }
+
+    /** 只保存一次任务流水线各阶段必须共享的数据。 */
+    private static class TaskContext {
+        private final ExperimentType type;
+        private String sutImage;
+        private String baseUrl;
+        private String metricsJson;
+        private boolean environmentStarted;
+        private volatile String status;
+
+        private TaskContext(ExperimentType type) {
+            this.type = type;
+        }
     }
 }

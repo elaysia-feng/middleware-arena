@@ -92,12 +92,11 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
-    public List<String> resourceArgs(RunnerProperties.Tiers.Tier tier) {
-        // 由 tier 额度生成 Docker 硬限制参数：--memory {memoryMb}m --cpus {cpus}
-        // （最后一道防线，真正决策在 ResourceScheduler）
+    public List<String> resourceArgs(double cpus, long memoryMb) {
+        // 由当前容器的实验需求生成 Docker 硬限制参数，和调度器预留口径保持一致。
         return List.of(
-                "--memory", tier.getMemoryMb() + "m",
-                "--cpus", String.valueOf(tier.getCpus()));
+                "--memory", memoryMb + "m",
+                "--cpus", String.valueOf(cpus));
     }
 
     // ==================== 镜像 ====================
@@ -173,10 +172,44 @@ public class DockerServiceImpl implements DockerService {
         return run(List.of("stats", "--no-stream", "--format", "{{.CPUPerc}}|{{.MemUsage}}", containerName)).trim();
     }
 
+    @Override
+    public void runK6(Long taskId, String hostWorkDir, String scriptName,
+            double cpus, long memoryMb, long timeoutSeconds) {
+        String container = containerName(taskId, "k6");
+        List<String> args = List.of(
+                "run", "--rm",
+                "--name", container,
+                "--network", networkName(taskId),
+                // k6 必须把 summary 写回 Runner 创建的宿主目录，避免镜像默认用户无写权限。
+                "--user", "0:0",
+                "--cpus", String.valueOf(cpus),
+                "--memory", memoryMb + "m",
+                "-v", hostWorkDir + ":/scripts",
+                properties.getImages().getK6(),
+                "run",
+                "/scripts/" + scriptName);
+        try {
+            run(args, timeoutSeconds);
+        } catch (RuntimeException e) {
+            // k6 超时或异常退出时，--rm 不一定来得及执行，主动清理命名容器。
+            try {
+                stopAndRemove(container);
+            } catch (RuntimeException cleanupError) {
+                e.addSuppressed(cleanupError);
+            }
+            throw e;
+        }
+    }
+
     // ==================== 底层执行 ====================
 
     /** 执行 docker CLI，输出落临时文件再读（避免管道 64KB 写满导致 waitFor 死锁）。 */
     private String run(List<String> args) {
+        return run(args, properties.getDocker().getCommandTimeoutSeconds());
+    }
+
+    /** 执行允许单独指定超时的 docker CLI 命令。 */
+    private String run(List<String> args, long timeoutSeconds) {
         try {
             // 1. 拼接指令：binary 放最前（docker CLI 可执行文件），后面跟调用方传入的参数
             List<String> command = new ArrayList<>(args);
@@ -195,7 +228,7 @@ public class DockerServiceImpl implements DockerService {
             Process p = pb.start();
 
             // 5. 等待结束，超时 destroyForcibly（用 commandTimeoutSeconds，非 HEALTH_POLL_MS）
-            if (!p.waitFor(properties.getDocker().getCommandTimeoutSeconds(), TimeUnit.SECONDS)) {
+            if (!p.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
                 p.destroyForcibly();
                 throw new RuntimeException("docker 命令超时：" + args);
             }

@@ -50,8 +50,8 @@ public interface DockerService {
     /** 强制删除容器（幂等语义由调用方按"已清理"容忍不存在） */
     void stopAndRemove(String name);
 
-    /** 由 tier 额度生成 Docker 硬限制参数：--memory / --cpus（最后一道防线，真正决策在 ResourceScheduler） */
-    List<String> resourceArgs(RunnerProperties.Tiers.Tier tier);
+    /** 由当前容器的实验需求生成 Docker 硬限制参数。 */
+    List<String> resourceArgs(double cpus, long memoryMb);
 
     // ==================== 镜像 ====================
 
@@ -72,4 +72,8 @@ public interface DockerService {
 
     /** docker stats 单容器快照（原始文本，解析见 MetricsCollector） */
     String stats(String containerName);
+
+    /** 在当前任务网络内运行一次性 k6 容器，并将 summary 写入挂载目录。 */
+    void runK6(Long taskId, String hostWorkDir, String scriptName,
+            double cpus, long memoryMb, long timeoutSeconds);
 }

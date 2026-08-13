@@ -16,6 +16,16 @@ public final class RunnerRedisKeys {
     /** 任务实例前缀：runner:task:instance:{taskId} */
     public static final String TASK_INSTANCE_PREFIX = "runner:task:instance:";
 
+    /** Runner 全局资源占用量 */
+    public static final String RESOURCE_USAGE = "runner:resource:usage";
+
+    /** 任务资源预留前缀 */
+    public static final String RESOURCE_RESERVATION_PREFIX = "runner:resource:reservation:";
+
+    /** VIP / FREE 各自的 FIFO 等待队列（ZSet，score=入队时间）。 */
+    public static final String RESOURCE_WAITING_VIP = "runner:resource:waiting:vip";
+    public static final String RESOURCE_WAITING_FREE = "runner:resource:waiting:free";
+
     /**
      * 拼接任务实例 Redis 键。
      *
@@ -29,5 +39,9 @@ public final class RunnerRedisKeys {
     /** {@link #instanceKey(String)} 的 Long 重载，调用处无需手动转字符串。 */
     public static String instanceKey(long taskId) {
         return instanceKey(Long.toString(taskId));
+    }
+
+    public static String resourceReservationKey(long taskId) {
+        return RESOURCE_RESERVATION_PREFIX + taskId;
     }
 }

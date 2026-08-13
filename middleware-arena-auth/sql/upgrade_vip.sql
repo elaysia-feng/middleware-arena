@@ -1,0 +1,4 @@
+-- 已存在数据库的 VIP 字段升级脚本（MySQL 8.0.29+ 支持 IF NOT EXISTS）。
+ALTER TABLE `user`
+    ADD COLUMN IF NOT EXISTS tier VARCHAR(16) NOT NULL DEFAULT 'FREE' COMMENT '存储等级：FREE / VIP',
+    ADD COLUMN IF NOT EXISTS vip_expire_at DATETIME NULL COMMENT 'VIP 到期时间，业务访问时实时判断';

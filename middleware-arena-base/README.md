@@ -41,11 +41,8 @@ cd ..\middleware-arena-gateway; mvn clean package -DskipTests
 ## 启动（按 16GB 内存分场景）
 
 ```powershell
-# 基础模式：mysql / redis / nacos / gateway / auth（约 2~3GB）
+# 启动全部共用中间件
 .\scripts\start-base.ps1
-
-# 全部服务（演示用）
-.\scripts\start-full.ps1
 
 # 停止
 .\scripts\stop.ps1
@@ -53,9 +50,13 @@ cd ..\middleware-arena-gateway; mvn clean package -DskipTests
 
 启动后：
 
-- Nacos 控制台：http://localhost:8848/nacos
-- 网关：http://localhost:8000
-- auth：http://localhost:9001（Swagger: /swagger-ui.html）
+- Nacos 控制台：http://192.168.0.192:8848/nacos
+- RabbitMQ 管理台：http://192.168.0.192:15672
+- Sentinel 控制台：http://192.168.0.192:8858
+- Redis：192.168.0.192:6379
+- Elasticsearch：http://192.168.0.192:9200
+
+业务项目仍在开发机直接启动，将 `NACOS_ADDR`、`REDIS_HOST`、`RABBIT_HOST` 指向 `192.168.0.192`。MySQL 继续使用开发机本地实例。
 
 ## 构建策略
 

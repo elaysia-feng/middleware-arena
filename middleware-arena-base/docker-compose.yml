@@ -1,215 +1,97 @@
-# Middleware Arena — Docker Compose（按 Profile 分场景启停）
-# 用法：
-#   docker compose --profile base up -d --build      # 基础模式：mysql/redis/nacos/gateway/auth
-#   docker compose --profile platform up -d --build  # 平台模式（长期运行）：+ rabbitmq/experiment/runner
-#   docker compose --profile full up -d --build      # 全部服务（演示用，资源预算见注释）
-#   docker compose down                              # 停止
+# Middleware Arena 共用中间件
+# 部署到 192.168.0.192，业务项目不在此 Compose 中启动。
 #
-# 构建策略：先在主机用 JDK21 构建各服务（mvn package），再 docker build 打镜像。
-# 各服务仓库与本仓库是同级目录（../middleware-arena-xxx 作为 build context）。
+# 启动全部共用中间件：
+#   docker compose up -d
 #
-# 资源策略（Runner 资源优先方案）：
-#   - platform 长期运行：gateway / auth / experiment / runner + mysql / redis / rabbitmq / nacos
-#   - 实验环境（实验 Redis/MQ/ES/Seata/SUT/k6）不在此常驻：镜像预下载
-#     （scripts/prepull-images.ps1），由 Runner 按任务临时起独立网络 + 容器，
-#     压测完即删（见 runner 的 ma.runner.* 配置与 RunnerServiceImpl）。
+# 停止：
+#   docker compose down
 
 name: middleware-arena
 
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: ma-mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: root123
-      MYSQL_DATABASE: middleware_arena
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql-data:/var/lib/mysql
-    mem_limit: 1g
-    profiles: ["base", "platform", "full"]
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot123"]
-      interval: 10s
-      retries: 10
-
   redis:
     image: redis:7
     container_name: ma-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
+    volumes:
+      - redis-data:/data
     mem_limit: 512m
-    profiles: ["base", "platform", "full"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   rabbitmq:
     image: rabbitmq:management
     container_name: ma-rabbitmq
+    restart: unless-stopped
     ports:
-      - "5672:5672"    # AMQP（runner 任务队列 / 业务消息）
-      - "15672:15672"  # 管理台 http://localhost:15672
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
     mem_limit: 512m
-    profiles: ["base", "platform", "full"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   nacos:
     image: nacos/nacos-server:v2.3.2
     container_name: ma-nacos
+    restart: unless-stopped
     environment:
       MODE: standalone
     ports:
-      - "8848:8848"   # 控制台: http://localhost:8848/nacos
-      - "9848:9848"   # gRPC
-    mem_limit: 1g
-    profiles: ["base", "platform", "full"]
-
-  gateway:
-    build: ../middleware-arena-gateway
-    container_name: ma-gateway
-    environment:
-      NACOS_ADDR: nacos:8848
-    depends_on:
-      - nacos
-    ports:
-      - "8000:8000"
-    mem_limit: 512m
-    profiles: ["base", "platform", "full"]
-
-  auth:
-    build: ../middleware-arena-auth
-    container_name: ma-auth
-    environment:
-      NACOS_ADDR: nacos:8848
-    depends_on:
-      - nacos
-    ports:
-      - "9001:9001"
-    mem_limit: 512m
-    profiles: ["base", "platform", "full"]
-
-  # ===== 平台业务服务（platform / full 模式长期运行）=====
-  experiment:
-    build: ../middleware-arena-experiment
-    container_name: ma-experiment
-    environment:
-      NACOS_ADDR: nacos:8848
-    depends_on:
-      - nacos
-      - rabbitmq
-    ports:
-      - "9003:9003"
-    mem_limit: 512m
-    profiles: ["platform", "full"]
-
-  runner:
-    build: ../middleware-arena-runner
-    container_name: ma-runner
-    environment:
-      NACOS_ADDR: nacos:8848
-      DOCKER_HOST: unix:///var/run/docker.sock
+      - "8848:8848"
+      - "9848:9848"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ma-runner-work:/var/lib/ma-runner/work
-      - ma-runner-k6:/tmp/ma-k6
-    depends_on:
-      - nacos
-      - rabbitmq
-    ports:
-      - "9004:9004"
+      - nacos-data:/home/nacos/data
     mem_limit: 1g
-    profiles: ["platform", "full"]
 
-  # ===== 以下为 full 模式预留（演示用，未保证全部启动）=====
-  community:
-    build: ../middleware-arena-community
-    container_name: ma-community
-    environment:
-      NACOS_ADDR: nacos:8848
-    depends_on:
-      - nacos
+  sentinel:
+    image: bladex/sentinel-dashboard:1.8.9
+    container_name: ma-sentinel
+    restart: unless-stopped
     ports:
-      - "9002:9002"
+      - "8858:8858"
     mem_limit: 512m
-    profiles: ["full"]
 
-  notification:
-    build: ../middleware-arena-notification
-    container_name: ma-notification
-    environment:
-      NACOS_ADDR: nacos:8848
-    depends_on:
-      - nacos
-    ports:
-      - "9005:9005"
-    mem_limit: 512m
-    profiles: ["full"]
-
-  order:
-    build: ../middleware-arena-order
-    container_name: ma-order
-    environment:
-      NACOS_ADDR: nacos:8848
-    depends_on:
-      - nacos
-      - mysql
-    ports:
-      - "9006:9006"
-    mem_limit: 512m
-    profiles: ["full"]
-
-  storage:
-    build: ../middleware-arena-storage
-    container_name: ma-storage
-    environment:
-      NACOS_ADDR: nacos:8848
-    depends_on:
-      - nacos
-      - mysql
-    ports:
-      - "9007:9007"
-    mem_limit: 512m
-    profiles: ["full"]
-
-  account:
-    build: ../middleware-arena-account
-    container_name: ma-account
-    environment:
-      NACOS_ADDR: nacos:8848
-    depends_on:
-      - nacos
-      - mysql
-    ports:
-      - "9008:9008"
-    mem_limit: 512m
-    profiles: ["full"]
-
-  # TODO[AI Agent]：LangGraph 分析服务，full 模式预留
-  agent:
-    build: ../middleware-arena-agent
-    container_name: ma-agent
-    environment:
-      OPENAI_API_BASE: ${OPENAI_API_BASE:-https://api.openai.com/v1}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-    ports:
-      - "9500:9500"
-    mem_limit: 1g
-    profiles: ["full"]
-
-  # TODO[Elasticsearch 搜索实验]：单节点、堆≤1GB、关安全特性，full 模式预留。
-  # 注意：这是平台演示用 ES；Runner 的 ES 实验会为每个任务另起独立 ES 容器
-  # （ma.runner.images.elasticsearch），不与本服务共用。
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
-    container_name: ma-es
+    container_name: ma-elasticsearch
+    restart: unless-stopped
     environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms512m -Xmx1g
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx1g
     ports:
       - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
     mem_limit: 2g
-    profiles: ["full"]
+
+  seata:
+    image: apache/seata-server:2.1.0
+    container_name: ma-seata
+    restart: unless-stopped
+    ports:
+      - "8091:8091"
+      - "7091:7091"
+    mem_limit: 1g
 
 volumes:
-  mysql-data:
-  ma-runner-work:
-  ma-runner-k6:
+  redis-data:
+  rabbitmq-data:
+  nacos-data:
+  elasticsearch-data:
+
+networks:
+  default:
+    name: middleware-arena-net
+    driver: bridge

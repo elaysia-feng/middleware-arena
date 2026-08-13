@@ -21,25 +21,43 @@ import java.util.Map;
  */
 public enum ExperimentType {
 
-    REDIS("product", Map.of("mysql", "mysql", "redis", "redis"), "/product/1", "GET"),
-    RABBITMQ("order", Map.of("mysql", "mysql", "rabbitmq", "rabbitmq"), "/order/create", "POST"),
-    ELASTICSEARCH("search", Map.of("elasticsearch", "elasticsearch"), "/search?keyword=benchmark", "GET"),
-    SEATA("order", Map.of("mysql", "mysql", "seata", "seata"), "/order/create", "POST"),
+    REDIS("product",
+            Map.of(
+                    "mysql", new ContainerSpec("mysql", 0.5, 512),
+                    "redis", new ContainerSpec("redis", 0.25, 256)),
+            new ContainerResource(0.5, 512), "/product/1", "GET"),
+    RABBITMQ("order",
+            Map.of(
+                    "mysql", new ContainerSpec("mysql", 0.5, 512),
+                    "rabbitmq", new ContainerSpec("rabbitmq", 0.75, 768)),
+            new ContainerResource(0.75, 768), "/order/create", "POST"),
+    ELASTICSEARCH("search",
+            Map.of("elasticsearch", new ContainerSpec("elasticsearch", 1.5, 2048)),
+            new ContainerResource(0.75, 768), "/search?keyword=benchmark", "GET"),
+    SEATA("order",
+            Map.of(
+                    "mysql", new ContainerSpec("mysql", 0.5, 512),
+                    "seata", new ContainerSpec("seata", 1.0, 1024)),
+            new ContainerResource(0.75, 768), "/order/create", "POST"),
     /** 未登记的中间件类型 → run() 判 UNKNOWN 走告警 / 不建环境 */
-    UNKNOWN("sut", Map.of(), "", "GET");
+    UNKNOWN("sut", Map.of(), new ContainerResource(0, 0), "", "GET");
 
     /** SUT 容器内监听端口（不打到宿主机，实验网络内容器名直连） */
     public static final int SUT_PORT = 8080;
 
     private final String sutRole;
-    /** 中间件角色 → RunnerProperties.images 字段名 */
-    private final Map<String, String> middlewareImages;
+    /** 中间件角色 → 镜像配置和容器资源需求。 */
+    private final Map<String, ContainerSpec> middlewareImages;
+    /** 当前实验 SUT 容器的资源需求。 */
+    private final ContainerResource sutResource;
     private final String k6Path;
     private final String httpMethod;
 
-    ExperimentType(String sutRole, Map<String, String> middlewareImages, String k6Path, String httpMethod) {
+    ExperimentType(String sutRole, Map<String, ContainerSpec> middlewareImages,
+            ContainerResource sutResource, String k6Path, String httpMethod) {
         this.sutRole = sutRole;
         this.middlewareImages = Map.copyOf(middlewareImages);
+        this.sutResource = sutResource;
         this.k6Path = k6Path;
         this.httpMethod = httpMethod;
     }
@@ -49,9 +67,39 @@ public enum ExperimentType {
         return sutRole;
     }
 
-    /** 中间件角色 → 配置字段名，数量 = 本实验需临时启动的组件数 */
-    public Map<String, String> middlewareImages() {
+    /** 中间件角色 → 镜像配置和资源需求，数量就是本实验需启动的中间件数量。 */
+    public Map<String, ContainerSpec> middlewareImages() {
         return middlewareImages;
+    }
+
+    public ContainerResource sutResource() {
+        return sutResource;
+    }
+
+    /**
+     * 调度器需要预留的 CPU 峰值，单位为 0.01 核。
+     * 构建和运行压测是顺序阶段，因此取两者最大值，再加每任务开销。
+     */
+    public long requiredCpuUnits(RunnerProperties.WorkloadResource workload) {
+        long runtimeCpuUnits = middlewareImages.values().stream()
+                .mapToLong(spec -> Math.round(spec.cpus() * 100))
+                .sum()
+                + Math.round(sutResource.cpus() * 100)
+                + Math.round(workload.getK6Cpus() * 100);
+        long buildCpuUnits = Math.round(workload.getBuildCpus() * 100);
+        return Math.max(buildCpuUnits, runtimeCpuUnits)
+                + Math.round(workload.getPerTaskCpus() * 100);
+    }
+
+    /** 构建阶段和运行压测阶段取内存峰值，再加每任务上下文、日志和指标开销。 */
+    public long requiredMemoryMb(RunnerProperties.WorkloadResource workload) {
+        long runtimeMemoryMb = middlewareImages.values().stream()
+                .mapToLong(ContainerSpec::memoryMb)
+                .sum()
+                + sutResource.memoryMb()
+                + workload.getK6MemoryMb();
+        return Math.max(workload.getBuildMemoryMb(), runtimeMemoryMb)
+                + workload.getPerTaskMemoryMb();
     }
 
     /** k6 压测路径（拼到 SUT 基址后面） */
@@ -81,5 +129,11 @@ public enum ExperimentType {
      */
     public String baselineImage(RunnerProperties.Images images) {
         return images.getBaselinePrefix() + name().toLowerCase() + images.getBaselineSuffix();
+    }
+
+    public record ContainerSpec(String imageConfigKey, double cpus, long memoryMb) {
+    }
+
+    public record ContainerResource(double cpus, long memoryMb) {
     }
 }

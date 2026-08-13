@@ -9,6 +9,8 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.stereotype.Component;
 
+import java.util.concurrent.TimeUnit;
+
 /**
  * Runner 任务消息生产端：experiment → {@code experiment.task.exchange} →
  * {@code runner.task.queue}。
@@ -52,11 +54,9 @@ public class RunnerCreaetTaskProducer {
             } else {
                 log.error("task publisher confirm FAIL: taskId={}, cause={}",
                         correlationData != null ? correlationData.getId() : "null", cause);
-                // TODO 补偿：confirm=false 说明 Broker 未持久化（交换机写入失败 / 集群异常），
-                // 将 experiment_task 置回 PENDING 交由扫描重投，或走告警
             }
         });
-        // 只打元数据，不打消息 body：body 含 filesJson / runParamsJson（用户代码与压测参数），
+        // 只打元数据，不打消息 body：新消息只含 OSS 引用和运行参数，历史消息可能仍含 filesJson，
         // 不可路由时整包打印会把敏感内容泄露进日志
         this.createTaskRabbitTemplate.setReturnsCallback(returned -> log.error(
                 "task message returned (mandatory): exchange={}, routingKey={}, reply={}",
@@ -69,12 +69,29 @@ public class RunnerCreaetTaskProducer {
      * correlationData 携带 taskId：Broker 持久化成功后 ConfirmCallback（ACK）里可据此
      * 将 experiment_task 标记为已投递；confirm=false 时由补偿逻辑回捞重投（TODO 见本类）。
      *
-     * @param message 任务消息（taskId / versionId / filesJson / runParamsJson）
+     * @param message 任务消息（taskId / versionId / OSS 文件引用 / runParamsJson）
      */
     public void send(RunnerTaskMessage message) {
         CorrelationData correlationData = new CorrelationData(String.valueOf(message.getTaskId()));
+        String routingKey = "VIP".equalsIgnoreCase(message.getTier())
+                ? ExperimentRabbitConfig.ROUTING_KEY_VIP
+                : ExperimentRabbitConfig.ROUTING_KEY_FREE;
         createTaskRabbitTemplate.convertAndSend(ExperimentRabbitConfig.EXCHANGE_TASK,
-                ExperimentRabbitConfig.ROUTING_KEY_TASK, message, correlationData);
-        log.debug("RunnerTaskMessage sent: taskId={}", message.getTaskId());
+                routingKey, message, correlationData);
+
+        // Broker ACK 且消息没有被 mandatory return，才表示任务真正进入对应队列。
+        try {
+            CorrelationData.Confirm confirm = correlationData.getFuture().get(10, TimeUnit.SECONDS);
+            if (!confirm.isAck() || correlationData.getReturned() != null) {
+                throw new IllegalStateException("Runner 任务投递失败，taskId=" + message.getTaskId()
+                        + ", cause=" + confirm.getReason());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("等待 Runner 任务投递确认时被中断，taskId=" + message.getTaskId(), e);
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException e) {
+            throw new IllegalStateException("等待 Runner 任务投递确认失败，taskId=" + message.getTaskId(), e);
+        }
+        log.debug("RunnerTaskMessage sent: taskId={}, tier={}", message.getTaskId(), message.getTier());
     }
 }

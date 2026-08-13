@@ -4,6 +4,7 @@ import com.mware.auth.dto.request.LoginRequest;
 import com.mware.auth.dto.request.RefreshRequest;
 import com.mware.auth.dto.request.RegisterRequest;
 import com.mware.auth.dto.response.LoginResponse;
+import com.mware.auth.dto.response.MembershipResponse;
 import com.mware.auth.dto.response.UserInfoResponse;
 
 /**
@@ -28,4 +29,10 @@ public interface AuthService {
 
     /** 当前用户信息：解析 accessToken 得到用户 id */
     UserInfoResponse me(String accessToken);
+
+    /** 为当前用户模拟充值 30 天 VIP。 */
+    MembershipResponse mockRecharge(String accessToken);
+
+    /** 供内部服务按用户 ID 查询实时会员等级。 */
+    MembershipResponse membership(Long userId);
 }

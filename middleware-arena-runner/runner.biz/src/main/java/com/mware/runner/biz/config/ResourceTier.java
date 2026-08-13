@@ -5,8 +5,8 @@ package com.mware.runner.biz.config;
  * <p>
  * 当前两级（对齐方案）：
  * <ul>
- *   <li>{@link #FREE}：单实验最多 1 CPU / 1GB，适合普通用户；</li>
- *   <li>{@link #VIP}：单实验最多 2 CPU / 3GB，面向高级用户 / 更大并发档位。</li>
+ *   <li>{@link #FREE}：普通用户任务；</li>
+ *   <li>{@link #VIP}：享有预留资源的会员任务。</li>
  * </ul>
  * 未知等级一律按 FREE 兜底，避免脏数据绕过资源限制。
  */

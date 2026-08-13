@@ -7,7 +7,13 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        server-addr: ${NACOS_ADDR:192.168.0.192:8848}
+    sentinel:
+      eager: true
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:192.168.0.192:8858}
+        client-ip: ${SENTINEL_CLIENT_IP:192.168.0.197}
+        port: ${SENTINEL_PORT:8721}
 
   # ============================================================
   # RabbitMQ（点赞 outbox 事件链路）
@@ -17,7 +23,7 @@ spring:
   # 消费端：manual ack（@RabbitListener ackMode=MANUAL）+ retry（重试后仍失败进 DLQ）。
   # ============================================================
   # rabbitmq:
-  #   host: ${RABBIT_HOST:127.0.0.1}
+  #   host: ${RABBIT_HOST:192.168.0.192}
   #   port: 5672
   #   username: ${RABBIT_USER:guest}
   #   password: ${RABBIT_PASSWORD:guest}
@@ -44,7 +50,7 @@ spring:
   # data:
   #   redis:
   #     cluster:
-  #       nodes: ${REDIS_CLUSTER_NODES:127.0.0.1:6379,127.0.0.1:6380,127.0.0.1:6381}
+  #       nodes: ${REDIS_CLUSTER_NODES:192.168.0.192:6379}
   #     timeout: 3s
 
   # ============================================================

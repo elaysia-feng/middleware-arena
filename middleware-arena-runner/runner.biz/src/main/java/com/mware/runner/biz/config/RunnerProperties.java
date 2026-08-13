@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * Runner 运行配置（ma.runner.*），覆盖 Docker 接入、平台资源上限、tier 额度、
+ * Runner 运行配置（ma.runner.*），覆盖 Docker 接入、平台资源上限、会员并发限制、
  * 公共镜像、k6 档位与 build 环境。
  * <p>
  * 设计对齐"公共镜像常驻磁盘、实验环境按任务临时启动、baseline/candidate 串行"：
@@ -22,8 +22,11 @@ public class RunnerProperties {
     /** 平台全局资源上限（防止大量普通用户把机器吃爆） */
     private PlatformResource platform = new PlatformResource();
 
-    /** 各 tier 单实验额度 */
+    /** 各会员等级的调度待遇；实验 CPU/内存需求由 ExperimentType 决定。 */
     private Tiers tiers = new Tiers();
+
+    /** 构建、压测和单任务运行开销。 */
+    private WorkloadResource workload = new WorkloadResource();
 
     /** 公共实验中间件 / 工具镜像 */
     private Images images = new Images();
@@ -51,14 +54,43 @@ public class RunnerProperties {
 
     @Data
     public static class PlatformResource {
+        /** 调度模式：LOCAL=单实例，REDIS=多实例 */
+        private SchedulerMode schedulerMode = SchedulerMode.LOCAL;
         /** 平台全局并发实验上限（槽位） */
         private int maxConcurrent = 3;
         /** 平台全局 CPU 上限（核） */
         private double maxCpus = 4.0;
         /** 平台全局内存上限（MB） */
         private long maxMemoryMb = 8192;
-        /** acquire 等待资源的最长时间（ms），超时抛 ResourceBusyException */
-        private long acquireTimeoutMs = 30000;
+        /** 为宿主系统、Docker daemon 和 Runner JVM 固定保留的 CPU。 */
+        private double systemReservedCpus = 0.5;
+        /** 为宿主系统、Docker daemon 和 Runner JVM 固定保留的内存。 */
+        private long systemReservedMemoryMb = 1024;
+        /** FREE 从入队开始最多等待 10 秒。 */
+        private long freeAcquireTimeoutMs = 10000;
+        /** VIP 从入队开始最多等待 5 分钟。 */
+        private long vipAcquireTimeoutMs = 300000;
+    }
+
+    @Data
+    public static class WorkloadResource {
+        /** Maven 编译和 docker build 的阶段峰值 CPU。 */
+        private double buildCpus = 1.0;
+        /** Maven 编译和 docker build 的阶段峰值内存。 */
+        private long buildMemoryMb = 1024;
+        /** k6 压测容器 CPU。 */
+        private double k6Cpus = 0.5;
+        /** k6 压测容器内存。 */
+        private long k6MemoryMb = 512;
+        /** 每个任务在 Runner JVM 中产生的额外 CPU 开销。 */
+        private double perTaskCpus = 0.25;
+        /** 每个任务的上下文、日志和指标采集内存开销。 */
+        private long perTaskMemoryMb = 256;
+    }
+
+    public enum SchedulerMode {
+        LOCAL,
+        REDIS
     }
 
     @Data
@@ -68,10 +100,8 @@ public class RunnerProperties {
 
         @Data
         public static class Tier {
-            /** 单实验最多 CPU（核） */
-            private double cpus = 1.0;
-            /** 单实验最多内存（MB） */
-            private long memoryMb = 1024;
+            /** 单个用户同时运行的任务上限。 */
+            private int maxConcurrentPerUser = 1;
         }
     }
 
@@ -115,6 +145,8 @@ public class RunnerProperties {
         private String localRepo = "/usr/local/maven/repo";
         /** 离线编译开关 */
         private boolean offline = true;
+        /** mvn 编译单次超时（秒）；mvn package 可能超过 docker.commandTimeoutSeconds(120s)，单独配置 */
+        private long compileTimeoutSeconds = 300;
     }
 
     @Data

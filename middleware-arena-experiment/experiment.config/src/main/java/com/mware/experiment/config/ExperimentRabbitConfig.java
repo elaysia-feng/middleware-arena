@@ -8,6 +8,7 @@ import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.amqp.rabbit.annotation.EnableRabbit;
 
 /**
  * 实验任务链路 RabbitMQ 基础设施配置：只声明拓扑 + 消息转换，不含生产端模板。
@@ -31,17 +32,22 @@ import org.springframework.context.annotation.Configuration;
  * </ul>
  */
 @Configuration
+@EnableRabbit
 public class ExperimentRabbitConfig {
 
     /** 任务投递交换机：direct，routingKey 决定进哪个队列 */
     public static final String EXCHANGE_TASK = "experiment.task.exchange";
     /** runner 契约队列（对齐 RunnerServiceImpl 的 runner.task.queue） */
-    public static final String QUEUE_RUNNER = "runner.task.queue";
-    /** 绑定路由键 */
-    public static final String ROUTING_KEY_TASK = "runner.task";
+    public static final String QUEUE_VIP = "runner.task.vip.queue";
+    public static final String QUEUE_FREE = "runner.task.free.queue";
+    public static final String ROUTING_KEY_VIP = "runner.task.vip";
+    public static final String ROUTING_KEY_FREE = "runner.task.free";
     /** 死信交换机 / 死信队列（重试耗尽后兜底） */
     public static final String DLX = "experiment.task.dlx";
     public static final String DLQ = "experiment.task.dlq";
+    public static final String EXCHANGE_STATUS = "experiment.task.status.exchange";
+    public static final String QUEUE_STATUS = "experiment.task.status.queue";
+    public static final String ROUTING_KEY_STATUS = "experiment.task.status";
 
     // ==================== 交换机 / 队列 / 绑定 ====================
 
@@ -51,9 +57,17 @@ public class ExperimentRabbitConfig {
     }
 
     @Bean
-    public Queue runnerTaskQueue() {
+    public Queue vipTaskQueue() {
         // durable + 绑定死信交换机：消费失败（重试耗尽）→ experiment.task.dlq，避免消息丢失
-        return QueueBuilder.durable(QUEUE_RUNNER)
+        return QueueBuilder.durable(QUEUE_VIP)
+                .withArgument("x-dead-letter-exchange", DLX)
+                .withArgument("x-dead-letter-routing-key", "dead")
+                .build();
+    }
+
+    @Bean
+    public Queue freeTaskQueue() {
+        return QueueBuilder.durable(QUEUE_FREE)
                 .withArgument("x-dead-letter-exchange", DLX)
                 .withArgument("x-dead-letter-routing-key", "dead")
                 .build();
@@ -70,13 +84,33 @@ public class ExperimentRabbitConfig {
     }
 
     @Bean
-    public Binding taskBinding() {
-        return BindingBuilder.bind(runnerTaskQueue()).to(taskExchange()).with(ROUTING_KEY_TASK);
+    public Binding vipTaskBinding() {
+        return BindingBuilder.bind(vipTaskQueue()).to(taskExchange()).with(ROUTING_KEY_VIP);
+    }
+
+    @Bean
+    public Binding freeTaskBinding() {
+        return BindingBuilder.bind(freeTaskQueue()).to(taskExchange()).with(ROUTING_KEY_FREE);
     }
 
     @Bean
     public Binding dlqBinding() {
         return BindingBuilder.bind(taskDeadLetterQueue()).to(taskDeadLetterExchange()).with("dead");
+    }
+
+    @Bean
+    public DirectExchange taskStatusExchange() {
+        return new DirectExchange(EXCHANGE_STATUS, true, false);
+    }
+
+    @Bean
+    public Queue taskStatusQueue() {
+        return QueueBuilder.durable(QUEUE_STATUS).build();
+    }
+
+    @Bean
+    public Binding taskStatusBinding() {
+        return BindingBuilder.bind(taskStatusQueue()).to(taskStatusExchange()).with(ROUTING_KEY_STATUS);
     }
 
     // ==================== 消息转换 ====================

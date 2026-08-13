@@ -20,4 +20,9 @@ public class UserInfoResponse {
     private String username;
 
     private String nickname;
+
+    /** 当前实时生效的会员等级。 */
+    private String tier;
+
+    private java.time.LocalDateTime vipExpireAt;
 }

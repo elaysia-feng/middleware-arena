@@ -1,7 +1,6 @@
 package com.mware.runner.biz.docker.impl;
 
 import com.mware.runner.biz.config.ExperimentType;
-import com.mware.runner.biz.config.ResourceTier;
 import com.mware.runner.biz.config.RunnerProperties;
 import com.mware.runner.biz.docker.DockerService;
 import com.mware.runner.biz.docker.ExperimentEnvironment;
@@ -23,22 +22,44 @@ public class ExperimentEnvironmentImpl implements ExperimentEnvironment {
 
     @Override
     public String start(RunnerTaskMessage message, ExperimentType type, String sutImage) {
-        // TODO[Runner]：完整实现——建独立网络 → 按 type.middlewareImages() 逐中间件起容器
-        // （带 resourceArgs(tier) 硬限制）→ 起 SUT 容器，返回 http://{sut容器名}:{SUT_PORT} 供 k6 压测。
-        return null;
+        Long taskId = message.getTaskId();
+        // 1. 每个任务使用独立网络，避免不同实验的容器和数据相互影响。
+        dockerService.createNetwork(taskId);
+
+        // 2. 只启动当前实验需要的中间件，每个容器使用自己的资源硬限制。
+        for (var entry : type.middlewareImages().entrySet()) {
+            String role = entry.getKey();
+            ExperimentType.ContainerSpec spec = entry.getValue();
+            String image = resolveImage(spec.imageConfigKey());
+            dockerService.startContainer(taskId, role, image,
+                    dockerService.resourceArgs(spec.cpus(), spec.memoryMb()));
+        }
+
+        // 3. SUT 也使用当前实验定义的资源，而不是按会员等级固定分配。
+        String sutRole = type.sutRole();
+        ExperimentType.ContainerResource sutResource = type.sutResource();
+        dockerService.startContainer(taskId, sutRole, sutImage,
+                dockerService.resourceArgs(sutResource.cpus(), sutResource.memoryMb()));
+
+        return "http://" + dockerService.containerName(taskId, sutRole) + ":" + ExperimentType.SUT_PORT;
     }
 
     @Override
     public void teardown(RunnerTaskMessage message, ExperimentType type) {
-        // TODO[Runner]：完整实现——删除全部实验容器（SUT + 中间件）+ 移除实验网络，
-        // 容忍容器/网络已不存在（幂等清理）。
-    }
+        Long taskId = message.getTaskId();
 
-    private RunnerProperties.Tiers.Tier tierConfig(RunnerTaskMessage message) {
-        return switch (ResourceTier.from(message.getTier())) {
-            case VIP -> properties.getTiers().getVip();
-            case FREE -> properties.getTiers().getFree();
-        };
+        // 1. 删除当前任务的 SUT 容器
+        dockerService.stopAndRemove(
+                dockerService.containerName(taskId, type.sutRole()));
+
+        // 2. 删除当前任务启动的中间件容器
+        for (String role : type.middlewareImages().keySet()) {
+            dockerService.stopAndRemove(
+                    dockerService.containerName(taskId, role));
+        }
+
+        // 3. 容器删除后，移除当前任务的独立网络
+        dockerService.removeNetwork(taskId);
     }
 
     /** 把 RunnerProperties.images 的字段名解析为实际镜像 tag */

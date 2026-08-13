@@ -43,7 +43,7 @@ cd middleware-arena-base && mvn install
 cd ..\middleware-arena-auth;     mvn clean package -DskipTests
 cd ..\middleware-arena-gateway;  mvn clean package -DskipTests
 
-# 3. 启动基础模式（mysql/redis/nacos/gateway/auth）
+# 3. 在 192.168.0.192 启动共用中间件（Redis/RabbitMQ/Nacos）
 cd ..\middleware-arena-base
 .\scripts\start-base.ps1
 
@@ -71,7 +71,6 @@ Nacos 控制台：http://localhost:8848/nacos · 网关：http://localhost:8000
 
 | Profile | 组件 | 预算 |
 |---|---|---|
-| `base` | mysql, redis, nacos, gateway, auth | 2~3GB |
-| `full` | 全部服务（演示） | 按 mem_limit 控制 |
+| 默认 | redis, rabbitmq, nacos, sentinel, elasticsearch, seata | 按 mem_limit 控制 |
 
 详见 `middleware-arena-base/docker-compose.yml`。

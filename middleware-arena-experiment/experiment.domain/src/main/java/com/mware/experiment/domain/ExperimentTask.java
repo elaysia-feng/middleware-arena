@@ -34,7 +34,7 @@ public class ExperimentTask {
     /** 实验版本快照 ID */
     private Long versionId;
 
-    /** 任务状态：QUEUED / RUNNING / SUCCESS / FAILED / CANCELLED */
+    /** 任务状态：CREATED / QUEUED / RUNNING / SUCCESS / FAILED / CANCELLED */
     private String status;
 
     /** 当前阶段：BUILDING / STARTING / BENCHMARKING / COLLECTING / ANALYZING */
@@ -42,6 +42,15 @@ public class ExperimentTask {
 
     /** 进度 0~100 */
     private Integer progress;
+
+    /** 本次入队时的会员等级快照，排队期间不随 VIP 到期变化。 */
+    private String tierSnapshot;
+
+    /** 每次创建或重试都会刷新，用于忽略上一轮迟到的状态消息。 */
+    private String dispatchId;
+
+    /** 机器可识别的失败码，例如 RESOURCE_BUSY。 */
+    private String errorCode;
 
     /** 失败原因（status=FAILED 时有值） */
     private String errorMessage;

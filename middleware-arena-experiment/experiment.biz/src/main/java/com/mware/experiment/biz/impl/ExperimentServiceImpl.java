@@ -1,6 +1,7 @@
 package com.mware.experiment.biz.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -10,6 +11,8 @@ import com.mware.common.web.ApiException;
 import com.mware.common.web.ErrorCode;
 import com.mware.common.web.UserContext;
 import com.mware.experiment.biz.ExperimentService;
+import com.mware.experiment.biz.client.AuthMembershipClient;
+import com.mware.experiment.biz.client.MembershipInfo;
 import com.mware.experiment.domain.ExperimentTask;
 import com.mware.experiment.domain.ExperimentTemplate;
 import com.mware.experiment.domain.ExperimentVersion;
@@ -29,10 +32,12 @@ import com.mware.experiment.mapper.ExperimentVersionMapper;
 import com.mware.experiment.mq.message.RunnerTaskMessage;
 import com.mware.experiment.mq.producer.RunnerCreaetTaskProducer;
 import com.mware.experiment.mq.producer.RunnerCancelTaskProducer;
+import com.mware.experiment.biz.storage.OssVersionFileStorage;
 
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -44,6 +49,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * 实验业务实现。
@@ -52,8 +58,7 @@ import java.util.Set;
  * <ul>
  * <li>模板 = 纯元数据（name/description/middlewareType/scenario/tags/status +
  * latestVersionId）</li>
- * <li>版本 = 内容快照（filesJson + runParamsJson + changeSummary + createdBy），只存在
- * experiment_version</li>
+ * <li>版本 = OSS 文件引用 + runParamsJson + changeSummary + createdBy，文件正文不进入 MySQL</li>
  * <li>任务 = 运行状态（status/currentStage/progress），runner 侧不持久化</li>
  * <li>结果 = 压测指标结构化（experiment_result，task_id 唯一）</li>
  * </ul>
@@ -72,6 +77,11 @@ public class ExperimentServiceImpl implements ExperimentService {
     private final ExperimentResultMapper experimentResultMapper;
     private final RunnerCreaetTaskProducer runnerTaskProducer;
     private final RunnerCancelTaskProducer runnerCancelTaskProducer;
+    private final AuthMembershipClient authMembershipClient;
+    private final OssVersionFileStorage ossVersionFileStorage;
+
+    @Value("${ma.internal-token:middleware-arena-internal-token}")
+    private String internalToken;
 
     /** JSON 序列化：base.web → spring-boot-starter-web 传递引入 jackson-databind */
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -106,7 +116,7 @@ public class ExperimentServiceImpl implements ExperimentService {
                 .build();
         experimentTemplateMapper.insert(template);
 
-        // 3. 创建初始版本 V1（filesJson + runParamsJson 只落 experiment_version）
+        // 3. 创建初始版本 V1（文件正文存 OSS，数据库只保存对象元数据）
         ExperimentVersion version = insertVersion(template.getId(), request.getFiles(),
                 request.getRunParams(), null, uid);
 
@@ -251,7 +261,6 @@ public class ExperimentServiceImpl implements ExperimentService {
     // ==================== TODO（数据链路，接入 runner / MQ 后实现） ====================
     // 待验证
     @Override
-    @Transactional
     public VersionResponse createVersion(Long templateId, String filesJson, String runParamsJson,
             String changeSummary) {
 
@@ -282,19 +291,26 @@ public class ExperimentServiceImpl implements ExperimentService {
         // 2. 生成递增 versionNo：同模板内最大 versionNo + 1
         Long versionNo = template.getLatestVersionId() == null ? 1 : template.getLatestVersionId() + 1;
 
-        // 3. 组装 ExperimentVersion{templateId, versionNo, filesJson, runParamsJson,
-        // changeSummary, createdBy=uid}，
-        // experimentVersionMapper.insert(version)，回填自增 id
+        // 3. 先上传 OSS，再执行数据库写入，避免把慢外部调用放进数据库事务。
+        OssVersionFileStorage.StoredFile storedFile = ossVersionFileStorage.upload(templateId, filesJson);
         ExperimentVersion version = ExperimentVersion.builder()
                 .templateId(templateId)
                 .versionNo(versionNo)
-                .filesJson(filesJson)
+                .filesObjectKey(storedFile.objectKey())
+                .filesSha256(storedFile.sha256())
+                .filesSize(storedFile.size())
                 .runParamsJson(runParamsJson)
                 .changeSummary(changeSummary)
                 .createdBy(userId)
+                .createdAt(LocalDateTime.now())
                 .build();
 
-        experimentVersionMapper.insert(version);
+        try {
+            experimentVersionMapper.insert(version);
+        } catch (RuntimeException e) {
+            ossVersionFileStorage.deleteQuietly(storedFile.objectKey());
+            throw e;
+        }
         // 4. 同步 template.latestVersionId =
         // version.id，experimentTemplateMapper.updateById
         template.setLatestVersionId(version.getId());
@@ -315,7 +331,7 @@ public class ExperimentServiceImpl implements ExperimentService {
         if (template == null || template.getLatestVersionId().equals(versionId) || version == null) {
             throw new ApiException(ErrorCode.NOT_FOUND);
         }
-        // 2. 以该版本 filesJson + runParamsJson 生成新版本（内容回滚到旧版），推进 latestVersionId
+        // 2. 以该版本的 OSS 文件引用 + runParamsJson 生成新版本，推进 latestVersionId。
         if (version.getVersionNo().equals(1)) {
             throw new ApiException(ErrorCode.NOT_FOUND);
         }
@@ -334,6 +350,9 @@ public class ExperimentServiceImpl implements ExperimentService {
         return ExperimentVersion.builder()
                 .changeSummary(version.getChangeSummary())
                 .filesJson(version.getFilesJson())
+                .filesObjectKey(version.getFilesObjectKey())
+                .filesSha256(version.getFilesSha256())
+                .filesSize(version.getFilesSize())
                 .runParamsJson(version.getRunParamsJson())
                 .createdAt(LocalDateTime.now())
                 .createdBy(version.getCreatedBy())
@@ -348,7 +367,7 @@ public class ExperimentServiceImpl implements ExperimentService {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
 
-        // 1. 校验版本存在：RunnerTaskMessage 需带 filesJson / runParamsJson，随版本快照投递
+        // 1. 校验版本存在：RunnerTaskMessage 只携带 OSS 引用和运行参数。
         if (versionId == null) {
             throw new ApiException(ErrorCode.NOT_FOUND);
         }
@@ -362,32 +381,66 @@ public class ExperimentServiceImpl implements ExperimentService {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
 
-        // 2. 组装 ExperimentTask（status=QUEUED，currentStage=null，progress=0，关联 versionId）
+        // 2. 入队前实时查询会员等级。查询失败直接终止创建，不能静默降级为 FREE。
+        MembershipInfo membership = queryMembership(uid);
+        String tier = "VIP".equalsIgnoreCase(membership.getEffectiveTier()) ? "VIP" : "FREE";
+        // 3. 普通会员只开放低成本 Redis 实验，避免单个免费任务占用 ES 等高成本资源。
+        if ("FREE".equals(tier) && !"REDIS".equalsIgnoreCase(template.getMiddlewareType())) {
+            throw new ApiException(403, "普通会员只允许运行 Redis 实验");
+        }
+        String dispatchId = UUID.randomUUID().toString();
+
+        // 4. 先保存为 CREATED；只有 RabbitMQ 确认成功后才进入 QUEUED。
         LocalDateTime now = LocalDateTime.now();
         ExperimentTask task = ExperimentTask.builder()
                 .userId(uid)
                 .versionId(versionId)
-                .status("QUEUED")
+                .status("CREATED")
                 .currentStage(null)
                 .progress(0)
+                .tierSnapshot(tier)
+                .dispatchId(dispatchId)
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
         experimentTaskMapper.insert(task);
 
-        // 3. 投递 RunnerTaskMessage{taskId, versionId, filesJson, runParamsJson} 至
+        // 5. 按 tier 路由到 VIP / FREE 队列。
         // RabbitMQ，
         // runner 执行后回传 progress/status，由本服务更新 task
         RunnerTaskMessage taskMessage = RunnerTaskMessage.builder()
                 .taskId(task.getId())
+                .userId(uid)
                 .versionId(versionId)
+                // 历史版本仍可使用 filesJson；新版本该字段为 null，不再把大正文放进 MQ。
                 .filesJson(version.getFilesJson())
+                .filesObjectKey(version.getFilesObjectKey())
+                .filesSha256(version.getFilesSha256())
+                .filesSize(version.getFilesSize())
                 .runParamsJson(version.getRunParamsJson())
                 .taskType("CREATE")
+                .middlewareType(template.getMiddlewareType())
+                .tier(tier)
+                .queuedAtEpochMs(System.currentTimeMillis())
+                .dispatchId(dispatchId)
+                .baseline(Boolean.FALSE)
                 .build();
         runnerTaskProducer.send(taskMessage);
 
-        // 4. domain → TaskResponse 返回
+        // 6. Broker confirm 成功且没有 mandatory return，任务才算真正进入排队状态。
+        int queued = experimentTaskMapper.update(null, new LambdaUpdateWrapper<ExperimentTask>()
+                .eq(ExperimentTask::getId, task.getId())
+                .eq(ExperimentTask::getStatus, "CREATED")
+                .set(ExperimentTask::getStatus, "QUEUED")
+                .set(ExperimentTask::getUpdatedAt, LocalDateTime.now()));
+        if (queued == 1) {
+            task.setStatus("QUEUED");
+        } else {
+            // Runner 可能已开始执行并回传 RUNNING，不能把状态倒退回 QUEUED。
+            task = experimentTaskMapper.selectById(task.getId());
+        }
+
+        // 7. domain → TaskResponse 返回
         return toTaskResponse(task);
     }
 
@@ -400,6 +453,8 @@ public class ExperimentServiceImpl implements ExperimentService {
                 .status(task.getStatus())
                 .currentStage(task.getCurrentStage())
                 .progress(task.getProgress())
+                .tierSnapshot(task.getTierSnapshot())
+                .errorCode(task.getErrorCode())
                 .errorMessage(task.getErrorMessage())
                 .createdAt(task.getCreatedAt())
                 .startedAt(task.getStartedAt())
@@ -546,8 +601,8 @@ public class ExperimentServiceImpl implements ExperimentService {
         }
 
         // 3. 从两版文件快照中各抽 path → content 索引
-        Map<String, String> fromContents = indexFileContentsByPath(fromVersion.getFilesJson());
-        Map<String, String> toContents = indexFileContentsByPath(toVersion.getFilesJson());
+        Map<String, String> fromContents = indexFileContentsByPath(loadFilesJson(fromVersion));
+        Map<String, String> toContents = indexFileContentsByPath(loadFilesJson(toVersion));
 
         // 对比主键 = 两版 filesJson 快照解析出的文件 key 并集（见 indexFileContentsByPath；
         // 保持 from 顺序，to 独有 key 追加在后）。以 key 相同为准，两侧各取 content 对比：
@@ -705,11 +760,31 @@ public class ExperimentServiceImpl implements ExperimentService {
         if (!"FAILED".equals(task.getStatus())) {
             throw new ApiException(ErrorCode.PARAM_INVALID);
         }
-        // 4. 复位运行字段为排队态，先落盘再投递（对齐 cancelTask 的"先 update 后 send"顺序）
+        // 4. 重试是一次新的入队，重新实时查询会员并生成新的 dispatchId。
+        MembershipInfo membership = queryMembership(task.getUserId());
+        String tier = "VIP".equalsIgnoreCase(membership.getEffectiveTier()) ? "VIP" : "FREE";
+        // 5. 先加载实验类型并校验当前会员权限，再修改任务状态。
+        ExperimentVersion version = experimentVersionMapper.selectById(task.getVersionId());
+        if (version == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND);
+        }
+        ExperimentTemplate template = experimentTemplateMapper.selectById(version.getTemplateId());
+        if (template == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND);
+        }
+        if ("FREE".equals(tier) && !"REDIS".equalsIgnoreCase(template.getMiddlewareType())) {
+            throw new ApiException(403, "普通会员只允许运行 Redis 实验");
+        }
+        String dispatchId = UUID.randomUUID().toString();
+
+        // 6. 权限通过后复位运行字段，避免拒绝重试时把原任务提前改回 QUEUED。
         LocalDateTime now = LocalDateTime.now();
         task.setStatus("QUEUED");
         task.setCurrentStage(null);
         task.setProgress(0);
+        task.setTierSnapshot(tier);
+        task.setDispatchId(dispatchId);
+        task.setErrorCode(null);
         task.setErrorMessage(null);
         task.setStartedAt(null);
         task.setFinishedAt(null);
@@ -719,25 +794,44 @@ public class ExperimentServiceImpl implements ExperimentService {
             throw new ApiException(ErrorCode.NOT_FOUND);
         }
 
-        // 5. 重新投递 RunnerTaskMessage（复用 createTask 投递通道；版本内容是不可变快照）
-        ExperimentVersion version = experimentVersionMapper.selectById(task.getVersionId());
-        if (version == null) {
-            throw new ApiException(ErrorCode.NOT_FOUND);
-        }
+        // 7. 重新投递 RunnerTaskMessage（版本内容仍使用不可变快照）。
         RunnerTaskMessage taskMessage = RunnerTaskMessage.builder()
                 .taskId(task.getId())
+                .userId(task.getUserId())
                 .versionId(task.getVersionId())
                 .filesJson(version.getFilesJson())
+                .filesObjectKey(version.getFilesObjectKey())
+                .filesSha256(version.getFilesSha256())
+                .filesSize(version.getFilesSize())
                 .runParamsJson(version.getRunParamsJson())
                 .taskType("CREATE")
+                .middlewareType(template.getMiddlewareType())
+                .tier(tier)
+                .queuedAtEpochMs(System.currentTimeMillis())
+                .dispatchId(dispatchId)
+                .baseline(Boolean.FALSE)
                 .build();
         runnerTaskProducer.send(taskMessage);
 
-        // 6. domain → TaskResponse 返回
+        // 8. domain → TaskResponse 返回
         return toTaskResponse(task);
     }
 
     // ==================== 私有辅助 ====================
+
+    private MembershipInfo queryMembership(Long userId) {
+        try {
+            var response = authMembershipClient.membership(userId, internalToken);
+            if (response == null || response.getCode() != 200 || response.getData() == null) {
+                throw new ApiException(503, "会员服务暂时不可用");
+            }
+            return response.getData();
+        } catch (ApiException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new ApiException(503, "会员服务暂时不可用");
+        }
+    }
 
     /** 生成递增版本号并落库（并发靠 uk_template_version 唯一键兜底）；changeSummary 暂由前端可选传入 */
     private ExperimentVersion insertVersion(Long templateId, List<TemplateFileRequest> files,
@@ -758,16 +852,25 @@ public class ExperimentServiceImpl implements ExperimentService {
                 })
                 .toList();
 
+        String filesJson = toJson(resolvedFiles);
+        OssVersionFileStorage.StoredFile storedFile = ossVersionFileStorage.upload(templateId, filesJson);
         ExperimentVersion version = ExperimentVersion.builder()
                 .templateId(templateId)
                 .versionNo(nextNo)
-                .filesJson(toJson(resolvedFiles))
+                .filesObjectKey(storedFile.objectKey())
+                .filesSha256(storedFile.sha256())
+                .filesSize(storedFile.size())
                 .runParamsJson(toJson(runParams))
                 .changeSummary(changeSummary)
                 .createdBy(createdBy)
                 .createdAt(LocalDateTime.now())
                 .build();
-        experimentVersionMapper.insert(version);
+        try {
+            experimentVersionMapper.insert(version);
+        } catch (RuntimeException e) {
+            ossVersionFileStorage.deleteQuietly(storedFile.objectKey());
+            throw e;
+        }
         return version;
     }
 
@@ -848,12 +951,21 @@ public class ExperimentServiceImpl implements ExperimentService {
                 .id(version.getId())
                 .templateId(version.getTemplateId())
                 .versionNo(version.getVersionNo())
-                .filesJson(includeContent ? version.getFilesJson() : null)
+                .filesJson(includeContent ? loadFilesJson(version) : null)
                 .runParamsJson(includeContent ? version.getRunParamsJson() : null)
                 .changeSummary(version.getChangeSummary())
                 .createdBy(version.getCreatedBy())
                 .createdAt(version.getCreatedAt())
                 .build();
+    }
+
+    /** 新版本从 OSS 读取正文，历史版本继续读取 files_json。 */
+    private String loadFilesJson(ExperimentVersion version) {
+        return ossVersionFileStorage.download(
+                version.getFilesJson(),
+                version.getFilesObjectKey(),
+                version.getFilesSha256(),
+                version.getFilesSize());
     }
 
     /** 校验是否还是当前user_id防止篡改 */

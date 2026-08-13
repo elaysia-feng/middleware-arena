@@ -1,8 +1,11 @@
 package com.mware.runner.biz.consumer;
 
 import com.mware.runner.biz.config.RunnerRabbitConfig;
+import com.mware.runner.biz.config.ResourceBusyException;
 import com.mware.runner.biz.execution.RunnerService;
+import com.mware.runner.biz.progress.RunnerTaskStatusProducer;
 import com.mware.runner.dto.RunnerTaskMessage;
+import com.mware.runner.dto.RunnerTaskStatusMessage;
 
 import com.rabbitmq.client.Channel;
 
@@ -37,12 +40,26 @@ import java.io.IOException;
 public class TaskConsumer {
 
     private final RunnerService runnerService;
+    private final RunnerTaskStatusProducer taskStatusProducer;
 
-    @RabbitListener(queues = RunnerRabbitConfig.QUEUE_RUNNER, ackMode = "MANUAL")
-    public void onTask(RunnerTaskMessage message, Channel channel,
+    @RabbitListener(queues = RunnerRabbitConfig.QUEUE_VIP,
+            containerFactory = "vipRabbitListenerContainerFactory", ackMode = "MANUAL")
+    public void onVipTask(RunnerTaskMessage message, Channel channel,
             @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) throws IOException {
-        log.info("runner 收到任务：taskId={}, versionId={}, filesLen={}, paramsLen={}",
+        consume(message, channel, deliveryTag);
+    }
+
+    @RabbitListener(queues = RunnerRabbitConfig.QUEUE_FREE,
+            containerFactory = "freeRabbitListenerContainerFactory", ackMode = "MANUAL")
+    public void onFreeTask(RunnerTaskMessage message, Channel channel,
+            @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) throws IOException {
+        consume(message, channel, deliveryTag);
+    }
+
+    private void consume(RunnerTaskMessage message, Channel channel, long deliveryTag) throws IOException {
+        log.info("runner 收到任务：taskId={}, versionId={}, filesObjectKey={}, legacyFilesLen={}, paramsLen={}",
                 message.getTaskId(), message.getVersionId(),
+                message.getFilesObjectKey(),
                 message.getFilesJson() == null ? 0 : message.getFilesJson().length(),
                 message.getRunParamsJson() == null ? 0 : message.getRunParamsJson().length());
 
@@ -77,6 +94,19 @@ public class TaskConsumer {
 
             // 流水线状态回传由 experiment-service 通过 SSE / Database 持有，
             // runner 仅负责执行 + 回传 progress / result 消息。
+            channel.basicAck(deliveryTag, false);
+        } catch (ResourceBusyException e) {
+            // 资源等待已经达到该等级的业务上限，不再重试占用 RabbitMQ。
+            log.warn("任务等待资源超时：taskId={}, tier={}", message.getTaskId(), message.getTier());
+            boolean vip = "VIP".equalsIgnoreCase(message.getTier());
+            taskStatusProducer.send(RunnerTaskStatusMessage.builder()
+                    .taskId(message.getTaskId())
+                    .dispatchId(message.getDispatchId())
+                    .status("FAILED")
+                    .errorCode(vip ? "VIP_QUEUE_TIMEOUT" : "RESOURCE_BUSY")
+                    .errorMessage(vip ? "VIP 队列等待超时，请稍后重试" : "服务器繁忙，请稍后重试")
+                    .occurredAtEpochMs(System.currentTimeMillis())
+                    .build());
             channel.basicAck(deliveryTag, false);
         } catch (RuntimeException e) {
             // 瞬时 / 可恢复异常（Redis 抖动、线程池满等）：不 ACK，抛出让 retry 拦截器重试；

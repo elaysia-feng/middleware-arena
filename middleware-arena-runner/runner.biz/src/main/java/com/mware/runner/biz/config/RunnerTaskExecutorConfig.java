@@ -18,7 +18,7 @@ import java.util.concurrent.ThreadPoolExecutor;
  *   <li>稳态到达率 λ：实验场景约 1 条 / 5min ≈ 0.0033 msg/s</li>
  *   <li>平均服务时间 E[S]：build(~60s) + run(~10s) + k6(~300s)
  *       + collect(~10s) + cleanup(~5s) ≈ 385s</li>
- *   <li>单消息最大尺寸：~1MB（含 filesJson / runParamsJson）</li>
+ *   <li>消息只携带 OSS 文件引用与运行参数，不传输大文件正文</li>
  * </ul>
  * 具体推导见每个 setter 行内的注释。
  *

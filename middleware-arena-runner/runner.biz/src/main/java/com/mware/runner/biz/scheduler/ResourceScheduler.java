@@ -11,7 +11,7 @@ import com.mware.runner.dto.RunnerTaskMessage;
  * {@link ResourceBusyException} 交给 execute 重新排队，绝不创建容器。
  * <p>
  * 占用口径 = CPU（核）+ 内存（MB）+ 并发槽位（全局 max-concurrent），三者同时满足才放行。
- * tier 决定单实验额度；平台全局上限兜底，防止大量 FREE 用户把机器吃爆。
+ * 实验类型决定资源需求；会员决定可用实验、并发上限和排队优先级；平台全局上限兜底。
  *
  * TODO[Runner]：
  * <ul>

@@ -7,7 +7,13 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        server-addr: ${NACOS_ADDR:192.168.0.192:8848}
+    sentinel:
+      eager: true
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:192.168.0.192:8858}
+        client-ip: ${SENTINEL_CLIENT_IP:192.168.0.197}
+        port: ${SENTINEL_PORT:8720}
   datasource:
     url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/middleware_arena?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: root
@@ -15,7 +21,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
   data:
     redis:
-      host: ${REDIS_HOST:127.0.0.1}
+      host: ${REDIS_HOST:192.168.0.192}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
       timeout: 3s
@@ -26,6 +32,7 @@ mybatis-plus:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
 
 ma:
+  internal-token: ${MA_INTERNAL_TOKEN:middleware-arena-internal-token}
   jwt:
     # 生产环境务必用环境变量覆盖
     secret: ${MA_JWT_SECRET:middleware-arena-default-secret-key-please-override-2026}

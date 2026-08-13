@@ -27,7 +27,7 @@ public class TaskResponse {
     /** 实验版本快照 ID */
     private Long versionId;
 
-    /** 任务状态：QUEUED / RUNNING / SUCCESS / FAILED / CANCELLED */
+    /** 任务状态：CREATED / QUEUED / RUNNING / SUCCESS / FAILED / CANCELLED */
     private String status;
 
     /** 当前阶段：BUILDING / STARTING / BENCHMARKING / COLLECTING / ANALYZING */
@@ -35,6 +35,10 @@ public class TaskResponse {
 
     /** 进度 0~100 */
     private Integer progress;
+
+    private String tierSnapshot;
+
+    private String errorCode;
 
     /** 失败原因（status=FAILED 时有值） */
     private String errorMessage;

@@ -22,11 +22,23 @@ public class RunnerTaskMessage {
     /** 实验任务 ID（experiment_task.id） */
     private Long taskId;
 
+    /** 创建任务的用户 ID，用于限制单个用户的并发任务数。 */
+    private Long userId;
+
     /** 实验版本 ID（experiment_version.id） */
     private Long versionId;
 
-    /** 完整代码文件快照（JSON 数组，来自 experiment_version.filesJson） */
+    /** 仅兼容旧版本数据；新任务不再通过 MQ 传输完整文件正文。 */
     private String filesJson;
+
+    /** 版本文件在 OSS 中的对象 Key。 */
+    private String filesObjectKey;
+
+    /** OSS 对象压缩字节的 SHA-256。 */
+    private String filesSha256;
+
+    /** OSS 对象压缩后的字节数。 */
+    private Long filesSize;
 
     /** 压测 / 运行参数（JSON，来自 experiment_version.runParamsJson） */
     private String runParamsJson;
@@ -43,6 +55,12 @@ public class RunnerTaskMessage {
 
     /** 资源等级（FREE / VIP），决定单实验 CPU/内存额度，缺省按 FREE（见 ResourceScheduler） */
     private String tier;
+
+    /** experiment 入队时间，用于计算 FREE / VIP 的端到端等待期限。 */
+    private Long queuedAtEpochMs;
+
+    /** 本次创建或重试的唯一投递标识。 */
+    private String dispatchId;
 
     /**
      * 是否 baseline 预构建镜像任务：true=用预构建 {@code ma-{type}-baseline:v1}，跳过现场编译；
