@@ -14,8 +14,8 @@ TODO[核心逻辑-由你实现]:
 - [ ] 控制 max_iterations 与 Human-in-the-loop。
 """
 
-from app.schemas.commands.analysis import AnalysisCommand
-from app.schemas.results.analysis import AnalysisResult
+from app.schemas.service.analysis_command import AnalysisCommand
+from app.schemas.service.analysis_result import AnalysisResult
 
 
 async def run_analysis(command: AnalysisCommand) -> AnalysisResult:
