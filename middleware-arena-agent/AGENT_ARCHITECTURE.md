@@ -5,10 +5,125 @@
 1. `middleware-arena-agent` 是独立 Python 微服务，FastAPI 端口 9500。
 2. 用户主动操作走 HTTP：Frontend -> Gateway -> Agent。
 3. Runner 完成后的自动分析走 MQ：Experiment -> RabbitMQ -> Agent。
-4. HTTP / MQ 最终都进入同一个 `analysis_service`，再执行 LangGraph，禁止维护两套分析逻辑。
+4. HTTP / MQ 最终都进入同一个 `analysis_service`，再执行 LangGraph。
 5. Agent 获取代码/metrics/diff/logs 时走 Experiment Internal API，不把大字段塞进 MQ。
 
-## 2. 对外 HTTP
+## 2. 模型分层约定
+
+不要把所有 Pydantic Model 都叫 DTO，也不要把模型定义塞进 Service。
+
+```text
+HTTP
+AnalyzeRequest
+     |
+     v
+AnalysisCommand <----- AgentAnalysisTaskMessage (MQ)
+     |
+     v
+analysis_service
+     |
+     v
+AnalysisState
+     |
+     v
+LangGraph
+     |
+     v
+AnalysisResult
+   /       \
+  v         v
+AnalyzeResponse   AgentAnalysisStatusMessage
+HTTP              MQ
+                     |
+                     v
+              Experiment Service
+                     |
+                     v
+              ExperimentAnalysis
+                 Entity / PO
+                     |
+                     v
+                   MySQL
+```
+
+统一命名：
+
+```text
+*Request / *Response   HTTP 边界
+*Message               MQ 跨服务契约
+*Command / *Result     Service 内部 DTO
+*State                 LangGraph 运行时状态
+ExperimentAnalysis     Java Entity / PO
+ExperimentPatch        Java Entity / PO
+```
+
+Python Agent 不直接维护 Experiment MySQL Entity。
+
+## 3. Python 目录
+
+```text
+app/
+├── api/                         # FastAPI Controller / Router
+│   ├── analyze.py
+│   ├── patch.py
+│   └── compare.py
+│
+├── schemas/
+│   ├── api/
+│   │   └── analysis.py          # Request / Response
+│   ├── commands/
+│   │   └── analysis.py          # AnalysisCommand
+│   ├── results/
+│   │   └── analysis.py          # AnalysisResult
+│   └── mq/
+│       └── analysis.py          # RabbitMQ Message
+│
+├── services/
+│   ├── analysis_service.py      # Command -> Result
+│   ├── experiment_client.py
+│   ├── llm.py
+│   └── langfuse.py
+│
+├── mq/                          # RabbitMQ 基础设施，不放 DTO
+│   ├── constants.py
+│   ├── connection.py
+│   ├── consumer.py
+│   └── publisher.py
+│
+├── graph/
+│   ├── state.py                 # 唯一 AnalysisState
+│   ├── builder.py
+│   ├── router.py
+│   ├── nodes/
+│   └── subgraphs/
+│       ├── redis/
+│       ├── rabbitmq/
+│       ├── seata/
+│       └── elasticsearch/
+│
+├── prompts/                     # Langfuse Prompt 管理
+├── tools/                       # Agent Tool
+├── core/                        # Settings / 基础配置
+└── evaluation/                  # Langfuse Eval
+```
+
+## 4. Java 持久化模型
+
+数据库所有权属于 `experiment-service`。
+
+```text
+experiment.domain/
+├── ExperimentAnalysis.java     # experiment_analysis PO / Entity
+└── ExperimentPatch.java        # experiment_patch PO / Entity
+
+experiment.mapper/
+├── ExperimentAnalysisMapper.java
+└── ExperimentPatchMapper.java
+```
+
+Python 通过 HTTP/MQ 与 Java 协作，不直接连接 Experiment MySQL。
+
+## 5. 对外 HTTP
 
 ```text
 Frontend
@@ -27,7 +142,7 @@ POST /agent/compare
 
 Gateway 当前通过 `AGENT_SERVICE_URL` 直接转发；Agent 暂不注册 Nacos。
 
-## 3. 自动分析 MQ
+## 6. 自动分析 MQ
 
 ```text
 Runner SUCCESS
@@ -38,8 +153,11 @@ Runner SUCCESS
       routing-key = agent.analysis
    -> agent.analysis.queue
    -> Python consumer
+   -> AnalysisCommand
    -> analysis_service
    -> LangGraph
+   -> AnalysisResult
+   -> AgentAnalysisStatusMessage
    -> agent.analysis.status.exchange
    -> agent.analysis.status.queue
    -> Experiment 持久化结果
@@ -47,37 +165,32 @@ Runner SUCCESS
 
 ### MQ 可靠性
 
-1. exchange/queue 都 durable。
-2. Python consumer 使用 manual ack + prefetch=1。
+1. exchange/queue durable。
+2. Python consumer manual ack + prefetch=1。
 3. 单次消费最多尝试 3 次；耗尽后 `reject(requeue=False)`。
 4. `agent.analysis.queue` 配置 DLX：`agent.analysis.dlx -> agent.analysis.dlq`。
-5. Python 成功发布最终 status/result 后，才 ACK 原 analysis task。
-6. Java/Python 对同名队列的 durable、DLX arguments 必须完全一致，否则 RabbitMQ 会 `PRECONDITION_FAILED`。
+5. Python 成功发布最终 status/result 后才 ACK 原 analysis task。
+6. Java/Python 对同名队列的 durable、DLX arguments 必须完全一致。
 
-Java 契约：`ExperimentRabbitConfig/AgentRabbitConfig`。
-Python 契约：`app/mq/constants.py`。
-
-## 4. MQ 消息字段
-
-自动分析任务只传轻量标识：
+## 7. MQ 消息字段
 
 ```text
-analysisId          experiment_analysis.id，主要幂等键
-taskId              experiment_task.id
-userId              审计/配额
-versionId           experiment_version.id
-baselineTaskId      可选；优化前后/基线任务
-middlewareType      redis/rabbitmq/seata/elasticsearch
-analysisType        第一版 PERFORMANCE_DIAGNOSIS
-triggerType         AUTO/MANUAL/RETRY
-dispatchId          本次 MQ 投递唯一 ID
-queuedAtEpochMs     排队时间/超时统计
+analysisId
+ taskId
+ userId
+ versionId
+ baselineTaskId
+ middlewareType
+ analysisType
+ triggerType
+ dispatchId
+ queuedAtEpochMs
 ```
 
 明确不放 MQ：
 
 ```text
-filesJson / 代码正文
+代码正文
 metricsJson
 运行日志
 完整 code diff
@@ -86,7 +199,7 @@ metricsJson
 
 这些由 `load_context` 收到 ID 后通过内部 HTTP 拉取。
 
-## 5. LangGraph 主流程
+## 8. LangGraph 主流程
 
 ```text
 load_context
@@ -103,67 +216,54 @@ load_context
   -> generate_report
 ```
 
-## 6. 目录职责
+`AnalysisState` 只用于图执行过程，不直接拿 Request/Message 当 State。
 
-```text
-app/
-├── api/                 # /agent/analyze、patch、compare
-├── mq/                  # RabbitMQ constants/message/connection/consumer/publisher
-├── graph/
-│   ├── builder.py       # 主 LangGraph
-│   ├── state.py         # 全局 AnalysisState
-│   ├── router.py        # 条件路由
-│   ├── nodes/           # 通用分析节点
-│   └── subgraphs/       # Redis / RabbitMQ / Seata / Elasticsearch 专家图
-├── prompts/             # Langfuse Prompt 获取与名称管理
-├── tools/               # Experiment / Metrics / Logs 等 Agent Tool
-├── services/            # analysis_service / LLM / Langfuse / 外部服务客户端
-├── core/                # 配置、日志、常量
-└── evaluation/          # Langfuse Dataset / Experiment / Evaluator
-```
+## 9. 数据持久化
 
-## 7. 数据持久化
-
-`middleware-arena-experiment/sql/upgrade_agent_analysis.sql` 预留：
+`middleware-arena-experiment/sql/upgrade_agent_analysis.sql`：
 
 1. `experiment_analysis`：分析状态、瓶颈、confidence、evidence、hypotheses、suggestions、report、Langfuse trace。
 2. `experiment_patch`：候选多文件 Patch、用户接受/拒绝状态、最终创建的新 versionId。
 
-Experiment Service 继续作为实验/版本/分析结果的数据 owner；Agent 不直接连接 Experiment MySQL。
-
-## 8. Langfuse
+## 10. Langfuse
 
 1. Trace：一次 analysisId 对应一条主 Trace。
 2. Prompt Management：metrics/code/redis/mq/seata/es/hypothesis/judge/patch/report 分 Prompt 管理。
-3. Dataset：Redis N+1、Big Key、MQ 堆积、Seata 锁冲突、ES 深分页等真实故障样本。
+3. Dataset：Redis N+1、Big Key、MQ 堆积、Seata 锁冲突、ES 深分页等故障样本。
 4. Experiment + Evaluator：评估 bottleneck accuracy、evidence quality、patch quality。
 5. Langfuse 故障只能影响可观测与 Eval，不能阻断 Agent 主链路。
 
-## 9. 推荐实现顺序
+## 11. 你后续主要实现的核心逻辑
 
-1. `core/config.py + mq/constants.py + mq/messages.py`。
-2. `experiment_analysis` 表 + Java AgentAnalysisTaskProducer。
-3. Python `mq/connection.py + consumer.py`，先做到消费消息打印 analysisId。
-4. `experiment_tools.py + load_context.py`，打通内部 HTTP。
-5. `analysis_service + graph/state.py + builder.py`，先跑 Redis 只读诊断。
-6. Langfuse Trace + Prompt Management。
-7. status/result MQ 回传并持久化。
-8. Patch + Human-in-the-loop + V1/V2 compare。
+```text
+analysis_service.run_analysis
+        |
+        v
+load_context
+        |
+        v
+analyze_metrics / analyze_code
+        |
+        v
+middleware subgraph
+        |
+        v
+generate_hypothesis
+        |
+        v
+judge_bottleneck
+        |
+        v
+generate_patch / generate_report
+```
 
-## 10. 关键约束
-
-1. `experiment_version + OSS` 是本次实验代码 source of truth，不以 GitHub HEAD 为准。
-2. Agent 只生成 Patch；用户确认后由 experiment-service 创建新版本。
-3. 所有瓶颈结论必须关联 evidence。
-4. 自动优化循环限制 `max_iterations`，默认 3。
-5. MQ 拓扑/JSON 字段属于跨语言契约，Java/Python 必须同步修改。
+基础配置、HTTP DTO、MQ DTO、RabbitMQ 连接、Java PO/Mapper 不应再混进核心推理逻辑。
 
 ## TODO
 
-- [ ] 将现有 `app/state.py` 迁移到 `app/graph/state.py` 后删除旧入口。
-- [ ] 在 `main.py` 挂载 `/agent` API Router 和 FastAPI lifespan MQ consumer。
-- [ ] 增加 aio-pika / httpx / pydantic-settings / langfuse 依赖并锁定版本。
-- [ ] 实现 Java AgentAnalysisTaskProducer / AgentAnalysisStatusConsumer。
-- [ ] 实现 Python consumer/publisher 与幂等控制。
+- [ ] 实现 `analysis_service.run_analysis`。
+- [ ] 实现 Experiment Internal API 的具体 task/result/version/diff 路径。
+- [ ] 实现 Java AgentAnalysisStatusConsumer 的状态机和幂等落库。
+- [ ] 为 Evidence/Hypothesis/Patch 增加结构化模型。
 - [ ] 为 Redis 场景准备第一批 Langfuse Dataset。
 - [ ] 增加 Java/Python MQ 契约测试。
