@@ -19,8 +19,9 @@ from pydantic import ValidationError
 from app.core.config import Settings, get_settings
 from app.mq.connection import RabbitMQManager, rabbitmq_manager
 from app.mq.publisher import publish_status
-from app.schemas.commands.analysis import AnalysisCommand
-from app.schemas.mq.analysis import AgentAnalysisStatusMessage, AgentAnalysisTaskMessage
+from app.schemas.mq.analysis_status_message import AgentAnalysisStatusMessage
+from app.schemas.mq.analysis_task_message import AgentAnalysisTaskMessage
+from app.schemas.service.analysis_command import AnalysisCommand
 from app.services.analysis_service import run_analysis
 
 logger = logging.getLogger(__name__)
