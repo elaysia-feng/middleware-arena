@@ -1,12 +1,40 @@
-"""Agent 分析状态/结果发布端占位。
+"""Agent 分析状态/结果发布端。
 
-1. 将 ANALYZING / SUCCESS / FAILED 状态发送到 agent.analysis.status.exchange。
-2. JSON 字段按 AgentAnalysisStatusMessage 的 camelCase alias 输出，保证 Java Jackson 可直接反序列化。
-3. Publisher Confirm/mandatory return 语义需要与 Java 生产端同等级处理，避免 Agent 已完成但 experiment-service 永远不知道。
+1. 发布 ANALYZING / SUCCESS / FAILED 到 agent.analysis.status.exchange。
+2. 使用 Pydantic alias 输出 Java 端可直接反序列化的 camelCase JSON。
+3. 消息持久化，publish await 成功后才允许上游 ACK 原分析任务。
 
 TODO:
-- [ ] 使用 aio-pika persistent Message(delivery_mode=PERSISTENT)。
-- [ ] publish(..., mandatory=True) 并处理不可路由异常。
-- [ ] resultJson 先控制体积；后续报告过大时改为对象存储引用，不把大正文长期塞 MQ。
-- [ ] 发布成功后 consumer 才允许 ACK 原 analysis task。
+- [ ] resultJson 过大后改为 OSS/object-key，不长期通过 MQ 传大报告。
+- [ ] 后续增加 publish 失败指标和补偿表。
 """
+
+import aio_pika
+
+from app.mq.connection import RabbitMQManager, rabbitmq_manager
+from app.mq.constants import ROUTING_KEY_STATUS
+from app.mq.messages import AgentAnalysisStatusMessage
+
+
+async def publish_status(
+    message: AgentAnalysisStatusMessage,
+    manager: RabbitMQManager = rabbitmq_manager,
+) -> None:
+    if manager.status_exchange is None:
+        await manager.connect()
+    if manager.status_exchange is None:
+        raise RuntimeError("Agent status exchange 未初始化")
+
+    body = message.model_dump_json(by_alias=True, exclude_none=True).encode("utf-8")
+    rabbit_message = aio_pika.Message(
+        body=body,
+        content_type="application/json",
+        delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+        message_id=str(message.analysis_id),
+        correlation_id=str(message.task_id),
+    )
+    await manager.status_exchange.publish(
+        rabbit_message,
+        routing_key=ROUTING_KEY_STATUS,
+        mandatory=True,
+    )
