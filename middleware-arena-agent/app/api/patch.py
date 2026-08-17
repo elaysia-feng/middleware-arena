@@ -13,7 +13,7 @@ TODO[核心逻辑-由你实现]:
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.config import get_settings
-from app.schemas.api.analysis import PatchRequest, PatchResponse
+from app.schemas.http.patch import PatchRequest, PatchResponse
 
 router = APIRouter(prefix=get_settings().agent_http_prefix, tags=["agent"])
 
