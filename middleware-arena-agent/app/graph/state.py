@@ -1,13 +1,54 @@
-"""LangGraph 全局状态定义占位。
+"""LangGraph AnalysisState。
 
-1. 保存一次分析从加载实验到生成报告的共享状态。
-2. 区分原始输入、分析中间结果、Patch 与最终报告。
-3. 为后续 SubGraph 约定统一字段，避免节点间随意传 dict。
+命名约定：
+1. State 只属于 LangGraph 运行时，不是 Request/Response/DTO/Entity。
+2. AnalysisCommand 负责“启动参数”，AnalysisState 负责“图执行过程中的共享上下文”。
+3. 节点间共享字段统一在这里声明，避免每个 Node 自己发明 dict key。
 
-TODO:
-- [ ] 迁移并扩展现有 app/state.py 的 AnalysisState。
-- [ ] 增加 task_id/version_id/template_id/middleware_type。
-- [ ] 增加 files/code_diff/logs/metric_findings/code_findings。
-- [ ] 增加 hypotheses/evidence/patches/iteration/max_iterations。
-- [ ] 明确可累加字段所需 reducer。
+TODO[核心逻辑-由你实现]:
+- [ ] 根据实际 SubGraph 确定 reducer，尤其 hypotheses/evidence/patches 等累加字段。
+- [ ] 明确哪些字段进入 Checkpoint，哪些大对象只保存引用。
+- [ ] 为 Evidence/Hypothesis/Patch 建结构化 Pydantic 模型，替代长期使用 dict。
 """
+
+from typing import Any, TypedDict
+
+
+class AnalysisState(TypedDict, total=False):
+    # ---------- identity / command ----------
+    analysis_id: int
+    task_id: int
+    user_id: int
+    version_id: int
+    baseline_task_id: int
+    middleware_type: str
+    analysis_type: str
+    trigger_type: str
+    dispatch_id: str
+
+    # ---------- source context ----------
+    config: dict[str, Any]
+    files: list[dict[str, Any]]
+    code_diff: list[dict[str, Any]]
+    metrics: dict[str, Any]
+    baseline_metrics: dict[str, Any]
+    logs: list[str]
+
+    # ---------- analysis intermediate ----------
+    metric_findings: list[dict[str, Any]]
+    code_findings: list[dict[str, Any]]
+    hypotheses: list[dict[str, Any]]
+    evidence: list[dict[str, Any]]
+
+    # ---------- decision / optimization ----------
+    bottleneck: dict[str, Any]
+    confidence: float
+    suggestions: list[dict[str, Any]]
+    patches: list[dict[str, Any]]
+
+    # ---------- loop / result ----------
+    iteration: int
+    max_iterations: int
+    comparison: dict[str, Any]
+    report: str
+    trace_id: str
