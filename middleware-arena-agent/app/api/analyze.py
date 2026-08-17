@@ -8,8 +8,8 @@
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.config import get_settings
-from app.schemas.api.analysis import AnalyzeRequest, AnalyzeResponse
-from app.schemas.commands.analysis import AnalysisCommand
+from app.schemas.http.analyze import AnalyzeRequest, AnalyzeResponse
+from app.schemas.service.analysis_command import AnalysisCommand
 from app.services.analysis_service import run_analysis
 
 router = APIRouter(prefix=get_settings().agent_http_prefix, tags=["agent"])
