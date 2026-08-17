@@ -42,13 +42,19 @@ app.include_router(patch_router)
 app.include_router(compare_router)
 
 
-@app.get("/health")
-def health() -> dict[str, str | bool]:
+def _health_payload() -> dict[str, str | bool]:
     return {
         "status": "ok",
         "service": "middleware-arena-agent",
         "mqEnabled": settings.agent_mq_enabled,
     }
+
+
+@app.get("/health")
+@app.get(f"{settings.agent_http_prefix}/health")
+def health() -> dict[str, str | bool]:
+    """保留直连健康检查，并提供 Gateway 可访问的 /agent/health。"""
+    return _health_payload()
 
 
 @app.post("/resource/advice", response_model=ResourceAdviceResponse)
