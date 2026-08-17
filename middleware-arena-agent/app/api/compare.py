@@ -1,8 +1,8 @@
 """Agent 优化前后对比 HTTP 入口。
 
-1. 接收 beforeTaskId / afterTaskId。
+1. 接收 CompareRequest，只负责 HTTP 参数校验。
 2. 后续加载两次 experiment_result 与代码版本，判断优化是否有效。
-3. API 层只保留参数校验，具体比较逻辑放 graph/service。
+3. 成功时返回 CompareResponse；具体比较逻辑放 graph/service。
 
 TODO[核心逻辑-由你实现]:
 - [ ] 加载两次实验 metrics。
@@ -13,7 +13,7 @@ TODO[核心逻辑-由你实现]:
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.config import get_settings
-from app.schemas.analysis import CompareRequest
+from app.schemas.api.analysis import CompareRequest
 
 router = APIRouter(prefix=get_settings().agent_http_prefix, tags=["agent"])
 
