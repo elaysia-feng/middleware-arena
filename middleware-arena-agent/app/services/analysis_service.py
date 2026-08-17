@@ -1,10 +1,10 @@
 """HTTP / MQ 共用的 Agent 分析业务入口。
 
-这里刻意只把“入口契约”实现好，真正的 Agent 推理逻辑留给 graph/ 下完成。
+这里刻意只保留 Service 业务编排，不定义 Request/Response/Message/State。
 
-1. HTTP / MQ 都转换为 AnalysisCommand。
-2. 后续只允许在 run_analysis 中启动 LangGraph，避免两套入口逻辑漂移。
-3. 返回统一 AnalysisResult，HTTP 可直接响应，MQ 可序列化后回传。
+1. HTTP Request / MQ Message 都先转换为 AnalysisCommand。
+2. `run_analysis` 是唯一 Agent 核心业务入口，后续在这里启动 LangGraph。
+3. 返回 AnalysisResult，再由 HTTP / MQ 各自转换成自己的出参模型。
 
 TODO[核心逻辑-由你实现]:
 - [ ] load_context：通过 experiment internal API 拉 version / metrics / diff / logs。
@@ -14,37 +14,15 @@ TODO[核心逻辑-由你实现]:
 - [ ] 控制 max_iterations 与 Human-in-the-loop。
 """
 
-from typing import Any, Literal
-
-from pydantic import BaseModel, ConfigDict, Field
-
-
-class AnalysisCommand(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    task_id: int
-    analysis_id: int | None = None
-    user_id: int | None = None
-    version_id: int | None = None
-    baseline_task_id: int | None = None
-    middleware_type: str | None = None
-    analysis_type: str = "PERFORMANCE_DIAGNOSIS"
-    trigger_type: Literal["AUTO", "MANUAL", "RETRY"] = "MANUAL"
-    dispatch_id: str | None = None
-
-
-class AnalysisResult(BaseModel):
-    analysis_id: int | None = None
-    task_id: int
-    status: str = "SUCCESS"
-    trace_id: str | None = None
-    data: dict[str, Any] = Field(default_factory=dict)
+from app.schemas.commands.analysis import AnalysisCommand
+from app.schemas.results.analysis import AnalysisResult
 
 
 async def run_analysis(command: AnalysisCommand) -> AnalysisResult:
     """启动一次完整分析。
 
-    基础设施已经把 HTTP/MQ 输入统一到这里；接下来由你从这里接 LangGraph。
+    基础设施已经把 HTTP/MQ 输入统一成 AnalysisCommand；
+    接下来只需要在这里接 LangGraph，不要把分析逻辑写回 API 或 Consumer。
     """
     raise NotImplementedError(
         "TODO[Agent Core]: 在 app/services/analysis_service.py::run_analysis 中接入 LangGraph"
