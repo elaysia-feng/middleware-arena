@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from app.services.langfuse import get_langfuse_client
+from app.clients.langfuse import get_langfuse_client
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,5 @@ def get_prompt(
         try:
             fallback = fallback.format(**variables)
         except (KeyError, IndexError, ValueError):
-            # fallback 中可能包含 JSON 花括号；这种情况由 Node 自己完成模板替换。
             pass
     return RenderedPrompt(content=fallback, version=None, source="fallback")
