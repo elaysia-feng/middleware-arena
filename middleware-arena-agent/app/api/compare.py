@@ -12,9 +12,10 @@ TODO[核心逻辑-由你实现]:
 
 from fastapi import APIRouter, HTTPException, status
 
+from app.core.config import get_settings
 from app.schemas.analysis import CompareRequest
 
-router = APIRouter(prefix="/agent", tags=["agent"])
+router = APIRouter(prefix=get_settings().agent_http_prefix, tags=["agent"])
 
 
 @router.post("/compare")
