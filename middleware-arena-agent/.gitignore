@@ -1,8 +1,38 @@
+# Python bytecode / runtime cache
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+
+# Test / type-check / lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
 .venv/
-# .env 仅保存仓库内可公开的开发默认值；真实密钥写 .env.local。
+venv/
+env/
+
+# Local application cache
+.cache/
+
+# Local secrets / developer overrides
+# .env 只保存可公开的开发默认值；真实密钥放 .env.local。
 .env.local
+
+# IDE / OS generated files
 .idea/
 .vscode/
 .DS_Store
+Thumbs.db
