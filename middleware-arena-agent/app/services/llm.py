@@ -1,10 +1,11 @@
 """资源建议使用的 OpenAI 兼容 LLM 接入。"""
 
-import os
 from typing import Any
 
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
+
+from app.core.config import get_settings
 
 
 class ResourceAdviceOutput(BaseModel):
@@ -15,14 +16,14 @@ class ResourceAdviceOutput(BaseModel):
 
 def request_resource_advice(context: dict[str, Any]) -> dict[str, Any]:
     """让 LLM 给出结构化资源建议；密钥未配置或调用失败时由接口回退到规则计算。"""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    settings = get_settings()
+    if not settings.openai_api_key:
         raise RuntimeError("未配置 OPENAI_API_KEY")
 
     model = ChatOpenAI(
-        api_key=api_key,
-        base_url=os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1"),
-        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_api_base,
+        model=settings.openai_model,
         temperature=0,
     ).with_structured_output(ResourceAdviceOutput, method="json_mode")
 
