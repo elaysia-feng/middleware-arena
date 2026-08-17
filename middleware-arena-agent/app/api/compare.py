@@ -13,13 +13,13 @@ TODO[核心逻辑-由你实现]:
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.config import get_settings
-from app.schemas.api.analysis import CompareRequest
+from app.schemas.api.analysis import CompareRequest, CompareResponse
 
 router = APIRouter(prefix=get_settings().agent_http_prefix, tags=["agent"])
 
 
-@router.post("/compare")
-async def compare(request: CompareRequest) -> dict:
+@router.post("/compare", response_model=CompareResponse, response_model_by_alias=True)
+async def compare(request: CompareRequest) -> CompareResponse:
     raise HTTPException(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail=(
