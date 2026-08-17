@@ -13,7 +13,7 @@ import aio_pika
 
 from app.mq.connection import RabbitMQManager, rabbitmq_manager
 from app.mq.constants import ROUTING_KEY_STATUS
-from app.schemas.mq.analysis import AgentAnalysisStatusMessage
+from app.schemas.mq.analysis_status_message import AgentAnalysisStatusMessage
 
 
 async def publish_status(
