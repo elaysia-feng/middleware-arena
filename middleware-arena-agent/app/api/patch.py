@@ -1,8 +1,8 @@
 """Agent Patch HTTP 入口。
 
-1. 接收 analysisId，后续读取对应诊断结果。
-2. 只生成候选 Patch，不直接修改 experiment_version。
-3. 用户确认后才调用 experiment-service createVersion。
+1. 接收 PatchRequest，只负责 HTTP 参数校验。
+2. 后续调用 Patch Service / LangGraph 节点生成候选 Patch。
+3. 成功时返回 PatchResponse；不直接修改 experiment_version。
 
 TODO[核心逻辑-由你实现]:
 - [ ] 根据 analysisId 加载 evidence/hypothesis。
@@ -13,7 +13,7 @@ TODO[核心逻辑-由你实现]:
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.config import get_settings
-from app.schemas.analysis import PatchRequest
+from app.schemas.api.analysis import PatchRequest
 
 router = APIRouter(prefix=get_settings().agent_http_prefix, tags=["agent"])
 
