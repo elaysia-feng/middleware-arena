@@ -2,18 +2,19 @@
 
 from fastapi import APIRouter, HTTPException, status
 
+from app.core.config import get_settings
 from app.schemas.analysis import (
+    AnalysisCommand,
     AnalyzeRequest,
     AnalyzeResponse,
     CompareRequest,
     CompareResponse,
     PatchRequest,
     PatchResponse,
-    AnalysisCommand,
 )
 from app.services.analysis import run_analysis
 
-router = APIRouter(prefix="/agent", tags=["agent"])
+router = APIRouter(prefix=get_settings().agent_http_prefix, tags=["agent"])
 
 
 @router.post("/analyze", response_model=AnalyzeResponse, response_model_by_alias=True)
