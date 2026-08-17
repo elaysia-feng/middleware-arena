@@ -1,7 +1,7 @@
 __pycache__/
 *.pyc
 .venv/
-.env
+# .env 仅保存仓库内可公开的开发默认值；真实密钥写 .env.local。
 .env.local
 .idea/
 .vscode/
