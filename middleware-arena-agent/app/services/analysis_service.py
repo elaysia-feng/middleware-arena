@@ -16,7 +16,7 @@ TODO[核心逻辑-由你实现]:
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AnalysisCommand(BaseModel):
@@ -38,7 +38,7 @@ class AnalysisResult(BaseModel):
     task_id: int
     status: str = "SUCCESS"
     trace_id: str | None = None
-    data: dict[str, Any] = {}
+    data: dict[str, Any] = Field(default_factory=dict)
 
 
 async def run_analysis(command: AnalysisCommand) -> AnalysisResult:
