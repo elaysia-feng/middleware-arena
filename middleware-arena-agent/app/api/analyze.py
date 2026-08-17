@@ -1,16 +1,17 @@
 """Agent analyze HTTP 入口。
 
-1. Gateway 转发 /agent/analyze 到这里。
+1. Gateway 转发 AGENT_HTTP_PREFIX/analyze 到这里。
 2. 请求只携带 taskId/baselineTaskId，转换为统一 AnalysisCommand。
 3. 真正分析只调用 analysis_service.run_analysis，不在 API 层写 LangGraph 逻辑。
 """
 
 from fastapi import APIRouter, HTTPException, status
 
+from app.core.config import get_settings
 from app.schemas.analysis import AnalyzeRequest, AnalyzeResponse
 from app.services.analysis_service import AnalysisCommand, run_analysis
 
-router = APIRouter(prefix="/agent", tags=["agent"])
+router = APIRouter(prefix=get_settings().agent_http_prefix, tags=["agent"])
 
 
 @router.post("/analyze", response_model=AnalyzeResponse, response_model_by_alias=True)
