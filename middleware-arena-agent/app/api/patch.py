@@ -13,13 +13,13 @@ TODO[核心逻辑-由你实现]:
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.config import get_settings
-from app.schemas.api.analysis import PatchRequest
+from app.schemas.api.analysis import PatchRequest, PatchResponse
 
 router = APIRouter(prefix=get_settings().agent_http_prefix, tags=["agent"])
 
 
-@router.post("/patch")
-async def generate_patch(request: PatchRequest) -> dict:
+@router.post("/patch", response_model=PatchResponse, response_model_by_alias=True)
+async def generate_patch(request: PatchRequest) -> PatchResponse:
     raise HTTPException(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail=f"TODO[Agent Core]: 实现 analysisId={request.analysis_id} 的 Patch 生成流程",
