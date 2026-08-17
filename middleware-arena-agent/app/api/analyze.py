@@ -1,11 +1,34 @@
-"""Agent 分析接口占位。
+"""Agent analyze HTTP 入口。
 
-1. 接收 task_id / version_id 等分析请求参数。
-2. 调用 LangGraph 主流程并返回结构化诊断结果。
-3. 后续接入 SSE/流式事件，向前端暴露分析阶段。
-
-TODO:
-- [ ] 定义 AnalyzeRequest / AnalyzeResponse。
-- [ ] 调用 app.graph.builder 中构建好的 graph。
-- [ ] 补充异常映射、trace_id 返回与鉴权。
+1. Gateway 转发 /agent/analyze 到这里。
+2. 请求只携带 taskId/baselineTaskId，转换为统一 AnalysisCommand。
+3. 真正分析只调用 analysis_service.run_analysis，不在 API 层写 LangGraph 逻辑。
 """
+
+from fastapi import APIRouter, HTTPException, status
+
+from app.schemas.analysis import AnalyzeRequest, AnalyzeResponse
+from app.services.analysis_service import AnalysisCommand, run_analysis
+
+router = APIRouter(prefix="/agent", tags=["agent"])
+
+
+@router.post("/analyze", response_model=AnalyzeResponse, response_model_by_alias=True)
+async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
+    command = AnalysisCommand(
+        task_id=request.task_id,
+        baseline_task_id=request.baseline_task_id,
+        trigger_type="MANUAL",
+    )
+    try:
+        result = await run_analysis(command)
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
+
+    return AnalyzeResponse(
+        task_id=result.task_id,
+        analysis_id=result.analysis_id,
+        status=result.status,
+        result=result.data,
+        trace_id=result.trace_id,
+    )
