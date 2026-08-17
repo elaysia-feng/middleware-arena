@@ -1,8 +1,8 @@
 """Agent 自动分析任务消费者。
 
-1. 消费 agent.analysis.queue 并解析 Java 发送的 AgentAnalysisTaskMessage。
-2. manual ack：分析成功且 SUCCESS 状态可靠发布后才 ACK。
-3. 本地最多重试 N 次；仍失败 reject(requeue=False)，由 RabbitMQ DLX 进入 DLQ。
+1. 消费 AgentAnalysisTaskMessage。
+2. MQ Message 转换为 Service AnalysisCommand 后调用统一 run_analysis。
+3. Service AnalysisResult 转换为 AgentAnalysisStatusMessage 回传。
 
 TODO[业务]:
 - [ ] 在执行 LLM 前增加 analysisId/dispatchId 幂等检查。
@@ -18,9 +18,10 @@ from pydantic import ValidationError
 
 from app.core.config import Settings, get_settings
 from app.mq.connection import RabbitMQManager, rabbitmq_manager
-from app.mq.messages import AgentAnalysisStatusMessage, AgentAnalysisTaskMessage
 from app.mq.publisher import publish_status
-from app.services.analysis_service import AnalysisCommand, run_analysis
+from app.schemas.commands.analysis import AnalysisCommand
+from app.schemas.mq.analysis import AgentAnalysisStatusMessage, AgentAnalysisTaskMessage
+from app.services.analysis_service import run_analysis
 
 logger = logging.getLogger(__name__)
 
