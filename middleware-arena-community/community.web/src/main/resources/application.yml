@@ -39,19 +39,24 @@ spring:
   #       default-requeue-rejected: false    # 重试耗尽后不进原队列（走 x-dead-letter-exchange → like.dlq）
 
   # ============================================================
-  # Redis Cluster（点赞缓存 / 计数聚合）
+  # Redis（评论缓存 + 点赞缓存 / 计数聚合）
   # 启用：取消注释。单机模式只用 spring.data.redis.*，集群用 cluster.nodes。
   # 键规划：
   #   like:counter:pending    Hash  待刷入 MySQL 的计数增量（聚合窗口内 HINCRBY）
   #   like:count:{postId}     String 点赞数缓存（读路径）
   #   like:users:{postId}     Set   点赞用户集合（cache 消费者写入，支持 SISMEMBER 判赞）
   #   like:hotpost:{yyyyMMdd} ZSet  当日热门帖子（statistics 消费者写入）
+  #   comment:list:p{postId}:p{page}:s{size}  String 评论分页缓存（v1，前 3 页，TTL 5min）
   # ============================================================
-  # data:
-  #   redis:
-  #     cluster:
-  #       nodes: ${REDIS_CLUSTER_NODES:192.168.0.192:6379}
-  #     timeout: 3s
+  data:
+    redis:
+      # 单机模式（开发态）：默认连本机 6379
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      # 集群模式（生产态）：注释上面 host/port，改用 cluster.nodes
+      # cluster:
+      #   nodes: ${REDIS_CLUSTER_NODES:192.168.0.192:6379}
+      timeout: 3s
 
   # ============================================================
   # MySQL 数据源（MyBatis-Plus）

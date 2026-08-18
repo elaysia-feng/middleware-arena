@@ -36,6 +36,13 @@ spring:
           uri: lb://notification-service
           predicates:
             - Path=/notification/**
+        # Python Agent 是独立微服务，但当前不注册 Nacos；Gateway 直接按可配置 URL 转发。
+        # 对外 HTTP：/agent/analyze、/agent/patch、/agent/compare。
+        # 自动分析不经过 Gateway，由 experiment-service -> RabbitMQ -> agent-service。
+        - id: agent-service
+          uri: ${AGENT_SERVICE_URL:http://127.0.0.1:9500}
+          predicates:
+            - Path=/agent/**
       globalcors:
         add-to-simple-url-handler-mapping: true
         cors-configurations:
