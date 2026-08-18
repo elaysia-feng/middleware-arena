@@ -31,13 +31,19 @@ spring:
     url: jdbc:shardingsphere:classpath:application-sharding.yml?placeholder-type=environment
 community:
   like:
+    # 64 个 Redis Cluster hash-slot 分区，状态/计数/version/Stream 同分区同槽，Lua 可原子执行。
     redis-partitions: 64
+    # 每个帖子再把点赞用户拆成 256 个 Hash，避免热门帖子形成单个超大 Hash。
     state-shards: 256
     relay-interval-ms: 200
     relay-batch-size: 200
     confirm-timeout-ms: 3000
     backlog-warn-size: 100000
+    # RabbitMQ 长时间不可用时，单分区 Stream 达到硬阈值即拒绝新的状态变化，避免可靠 Outbox 变 BigKey。
+    stream-hard-limit: 500000
+    # 热门榜与统计幂等键保留两天。
     statistics-ttl-seconds: 172800
+  # 旧 MySQL Transactional Outbox 留给尚未迁移的其它社区事件；点赞最终链路使用 Redis Stream Outbox。
   outbox:
     enabled: false
     relay-interval-ms: 5000
