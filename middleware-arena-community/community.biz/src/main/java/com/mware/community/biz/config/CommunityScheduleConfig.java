@@ -4,10 +4,10 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
- * 开启 Spring 定时任务。
+ * 开启社区异步调度任务。
  * <p>
- * 使用者：OutboxRelay（PENDING → RabbitMQ）、LikeCountFlushScheduler（待刷计数 → MySQL 批量 UPDATE）。
- * 间隔 / 批大小由 application.yml 的 {@code community.outbox.*} 配置。
+ * 点赞最终链路由 LikeStreamRelay 定时把 Redis Stream Outbox 投递到 RabbitMQ；
+ * 旧 MySQL OutboxRelay 仅在 community.outbox.enabled=true 时启用。
  */
 @Configuration
 @EnableScheduling
