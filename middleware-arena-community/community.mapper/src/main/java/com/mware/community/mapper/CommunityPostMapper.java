@@ -3,13 +3,17 @@ package com.mware.community.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.mware.community.domain.CommunityPost;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Update;
 
-/**
- * 帖子 Mapper（骨架占位）。
- * <p>
- * TODO：接入数据源时把 community.mapper 依赖引入 community.biz，
- * 并在 application.yml 启用数据源后生效。
- */
 @Mapper
 public interface CommunityPostMapper extends BaseMapper<CommunityPost> {
+    @Update("""
+            UPDATE community_post
+            SET like_count = #{likeCount}, like_version = #{version}
+            WHERE id = #{postId} AND like_version < #{version}
+            """)
+    int updateLikeCountIfNewer(@Param("postId") Long postId,
+                               @Param("likeCount") Long likeCount,
+                               @Param("version") Long version);
 }

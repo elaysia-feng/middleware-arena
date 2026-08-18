@@ -1,66 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-
-    <parent>
-        <groupId>com.mware</groupId>
-        <artifactId>community</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
-    </parent>
-
-    <artifactId>community.biz</artifactId>
-    <name>community.biz</name>
-    <description>社区业务逻辑</description>
-
+    <parent><groupId>com.mware</groupId><artifactId>community</artifactId><version>0.1.0-SNAPSHOT</version></parent>
+    <artifactId>community.biz</artifactId><name>community.biz</name><description>社区业务逻辑</description>
     <dependencies>
-        <!-- @Service / @Transactional 等注解：之前由共享库传递引入，现显式声明 -->
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-context</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.mware</groupId>
-            <artifactId>community.domain</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.mware</groupId>
-            <artifactId>community.dto</artifactId>
-        </dependency>
-        <!-- MyBatis-Plus Mapper（接入数据源后生效） -->
-        <dependency>
-            <groupId>com.mware</groupId>
-            <artifactId>community.mapper</artifactId>
-        </dependency>
-        <!-- 错误码 / ApiException（base.web 提供） -->
-        <dependency>
-            <groupId>com.mware</groupId>
-            <artifactId>base.web</artifactId>
-        </dependency>
-        <!-- RabbitMQ：点赞 outbox 事件链路（fanout 交换机 / 多队列 / 消费者 / Publish Confirm）
-             用 spring-rabbit 而非 spring-boot-starter-amqp：starter 3.3.5 不在本地离线仓库，
-             直接引 spring-rabbit（BOM 锁定 3.1.x，与 Boot 3.3.5 配套，离线可编译） -->
-        <dependency>
-            <groupId>org.springframework.amqp</groupId>
-            <artifactId>spring-rabbit</artifactId>
-            <!-- BOM 锁定 3.1.7 不在本地离线仓库，钉住离线可用的 3.1.4（同 Boot 3.3 线，API 兼容） -->
-            <version>3.1.4</version>
-        </dependency>
-        <!-- Redis：点赞缓存 / 计数聚合（Redis Cluster） -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
-        <!-- JSON：LikeEvent 序列化 / 反序列化（Jackson2JsonMessageConverter） -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <scope>provided</scope>
-        </dependency>
+        <dependency><groupId>org.springframework</groupId><artifactId>spring-context</artifactId></dependency>
+        <dependency><groupId>com.mware</groupId><artifactId>community.domain</artifactId></dependency>
+        <dependency><groupId>com.mware</groupId><artifactId>community.dto</artifactId></dependency>
+        <dependency><groupId>com.mware</groupId><artifactId>community.mapper</artifactId></dependency>
+        <dependency><groupId>com.mware</groupId><artifactId>base.web</artifactId></dependency>
+        <dependency><groupId>org.springframework.amqp</groupId><artifactId>spring-rabbit</artifactId><version>3.1.4</version></dependency>
+        <dependency><groupId>org.springframework.retry</groupId><artifactId>spring-retry</artifactId></dependency>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-redis</artifactId></dependency>
+        <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId></dependency>
+        <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><scope>provided</scope></dependency>
     </dependencies>
 </project>
