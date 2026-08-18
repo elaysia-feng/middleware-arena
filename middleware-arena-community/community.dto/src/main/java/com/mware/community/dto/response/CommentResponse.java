@@ -10,6 +10,8 @@ import java.time.LocalDateTime;
 
 /**
  * 评论响应对象（纯 DTO，后端输出，对齐 {@code community.domain.Comment}）。
+ * <p>
+ * parentId：为空 = 一级评论，非空 = 回复（前端用于楼中楼折叠 / 回复链路展示）。
  */
 @Data
 @Builder
@@ -22,6 +24,9 @@ public class CommentResponse {
     private Long postId;
 
     private Long authorId;
+
+    /** 父评论 ID；空 = 一级评论，非空 = 回复 */
+    private Long parentId;
 
     private String content;
 

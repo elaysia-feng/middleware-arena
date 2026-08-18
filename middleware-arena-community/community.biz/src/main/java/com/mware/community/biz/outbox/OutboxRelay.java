@@ -3,7 +3,7 @@ package com.mware.community.biz.outbox;
 /**
  * 事务性 Outbox Relay：扫描 event_outbox 中 PENDING 的事件 → 投递 RabbitMQ → 置 SENT。
  * <p>
- * <b>为什么能可靠投递</b>：点赞写库与 outbox 写入同事务（见 CommunityServiceImpl.like），
+ * <b>为什么能可靠投递</b>：点赞写库与 outbox 写入同事务（见 like/impl/LikeServiceImpl.like），
  * 本地事务提交后事件已落库；本组件定时重扫，天然补偿"DB 成功但 MQ 失败/未确认"的场景。
  * <pre>
  *   查 PENDING(outbox) → convertAndSend(fanout) → 等 Publisher Confirm → SENT / FAILED
