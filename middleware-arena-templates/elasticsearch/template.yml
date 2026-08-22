@@ -1,0 +1,19 @@
+# 当前基线代码为 MySQL LIKE；实验组需要在白名单内新增 ES 文档与 Repository。
+name: Elasticsearch 社区全文搜索
+middlewareType: ELASTICSEARCH
+scenario: COMMUNITY_FULL_TEXT_SEARCH
+description: 对比 MySQL LIKE 与 Elasticsearch multi_match 搜索。
+tags: 全文检索,高亮,索引同步,降级
+status: DRAFT
+runParams:
+  dataSizes: [10000, 100000, 1000000]
+  concurrencyLadder: [10, 30, 60]
+  duration: 30s
+  timeout: 5s
+files:
+  - path: middleware-arena-community/community.biz/src/main/java/com/mware/community/biz/search/impl/SearchServiceImpl.java
+    language: java
+    editable: true
+  - path: middleware-arena-community/community.web/src/main/resources/application.yml
+    language: yaml
+    editable: true

@@ -28,8 +28,8 @@
           <h2>Middleware Arena</h2>
         </div>
         <div class="header-right">
-          <!-- TODO: 展示当前登录用户名，未登录显示登录按钮 -->
-          <span class="username-placeholder">未登录</span>
+          <span class="username">{{ userStore.userInfo?.nickname || userStore.userInfo?.username }}</span>
+          <el-button text type="primary" @click="handleLogout">退出登录</el-button>
         </div>
       </el-header>
 
@@ -44,14 +44,29 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { HomeFilled, Opportunity, User } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user'
+import { logout } from '@/api/auth'
 
 const route = useRoute()
+const router = useRouter()
+const userStore = useUserStore()
 
 const activeMenu = computed(() => {
   const path = route.path
   if (path === '/') return '/'
   return path
 })
+
+async function handleLogout() {
+  const refreshToken = userStore.refreshToken
+  try {
+    if (refreshToken) await logout(refreshToken)
+  } finally {
+    userStore.logout()
+    await router.replace('/login')
+  }
+}
 </script>
 
 <style scoped>
@@ -83,7 +98,13 @@ const activeMenu = computed(() => {
   font-size: 18px;
 }
 
-.username-placeholder {
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.username {
   color: #909399;
   font-size: 14px;
 }

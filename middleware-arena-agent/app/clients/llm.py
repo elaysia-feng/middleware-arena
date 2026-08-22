@@ -1,4 +1,4 @@
-"""OpenAI-compatible LLM 调用封装。
+"""MiniMax LLM 调用封装。
 
 当前文件只服务于“资源建议”这个简单场景，后续 LangGraph 节点需要统一模型工厂时再扩展。
 
@@ -6,9 +6,11 @@
 这里负责 API/SDK 接入；真正“什么时候调用、拿结果做什么”属于 services/graph。
 """
 
+import json
+from pathlib import Path
 from typing import Any
 
-from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
@@ -36,6 +38,57 @@ class ResourceAdviceOutput(BaseModel):
     )
 
 
+def get_chat_model() -> ChatAnthropic:
+    """创建供 LangGraph 节点使用的 MiniMax 对话模型。
+
+    配置优先级为项目环境变量、``.env.local``、Claude Code 设置。最后一级仅用于
+    本机开发，容器和生产环境仍应通过密钥管理系统注入 ``ANTHROPIC_API_KEY``。
+    """
+    settings = get_settings()
+    claude_env = _read_claude_env()
+    api_key = (
+        settings.anthropic_api_key
+        or claude_env.get("ANTHROPIC_AUTH_TOKEN")
+    )
+    if not api_key:
+        raise RuntimeError("未配置 MiniMax API Key")
+
+    base_url = settings.anthropic_base_url
+    model_name = settings.anthropic_model
+    if not settings.anthropic_api_key:
+        base_url = claude_env.get("ANTHROPIC_BASE_URL") or base_url
+        model_name = claude_env.get("ANTHROPIC_MODEL") or model_name
+
+    return ChatAnthropic(
+        api_key=api_key,
+        base_url=base_url,
+        model=model_name,
+        temperature=0,
+        max_tokens=4096,
+    )
+
+
+def _read_claude_env() -> dict[str, str]:
+    """读取本机 Claude Code 环境配置，不记录或返回到业务结果中。"""
+    settings_path = Path.home() / ".claude" / "settings.json"
+    if not settings_path.is_file():
+        return {}
+
+    try:
+        payload = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    raw_env = payload.get("env")
+    if not isinstance(raw_env, dict):
+        return {}
+    return {
+        str(name): str(value)
+        for name, value in raw_env.items()
+        if value is not None
+    }
+
+
 def request_resource_advice(context: dict[str, Any]) -> dict[str, Any]:
     """调用 LLM 生成资源预算建议。
 
@@ -46,24 +99,10 @@ def request_resource_advice(context: dict[str, Any]) -> dict[str, Any]:
     这个函数失败时不自己 fallback，而是把异常抛给 service；
     service 决定使用规则预算兜底，这样 Client 不参与业务决策。
     """
-    settings = get_settings()
-
-    # 没配置 Key 就直接报错，避免 SDK 发出一个必然失败的网络请求。
-    if not settings.openai_api_key:
-        raise RuntimeError("未配置 OPENAI_API_KEY")
-
-    # ChatOpenAI 不只支持 OpenAI 官方 API；只要服务兼容 OpenAI 协议，
-    # 就可以通过 base_url + model 接 DeepSeek 等模型。
-    model = ChatOpenAI(
-        api_key=settings.openai_api_key,
-        base_url=settings.openai_api_base,
-        model=settings.openai_model,
-        # 资源预算希望稳定可重复，因此这里关闭随机性。
-        temperature=0,
-    ).with_structured_output(
+    model = get_chat_model().with_structured_output(
         ResourceAdviceOutput,
-        # json_mode 要求模型输出 JSON，再由 Pydantic 做字段校验。
-        method="json_mode",
+        # Anthropic 工具调用把输出约束到 Pydantic Schema。
+        method="function_calling",
     )
 
     # 当前资源建议逻辑比较简单，所以先直接拼 Prompt。
@@ -80,7 +119,4 @@ def request_resource_advice(context: dict[str, Any]) -> dict[str, Any]:
     return result.model_dump()
 
 
-# TODO[Agent Core - 由你实现]:
-# 1. 增加 get_chat_model() / model factory，供所有 LangGraph Node 统一复用。
-# 2. 根据 node 类型选择模型/temperature/reasoning effort。
-# 3. LangGraph LLM 调用接 Langfuse callback，而不是每个函数手写 trace。
+# TODO[Agent Core]: 后续按节点成本和复杂度选择 MiniMax 模型档位。

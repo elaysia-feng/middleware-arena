@@ -14,6 +14,7 @@ import logging
 from fastapi import FastAPI
 
 from app.api.router import api_router
+from app.clients.langfuse import flush_langfuse
 from app.core.config import get_settings
 from app.messaging.rabbitmq.connection import rabbitmq_manager
 from app.messaging.rabbitmq.consumer import agent_analysis_consumer
@@ -54,6 +55,7 @@ async def lifespan(_: FastAPI):
             # 关闭顺序：先停止继续消费消息，再关闭 RabbitMQ 连接。
             await agent_analysis_consumer.stop()
             await rabbitmq_manager.close()
+        flush_langfuse()
 
 
 # lifespan 参数把上面的启动/关闭逻辑绑定到 FastAPI 生命周期。

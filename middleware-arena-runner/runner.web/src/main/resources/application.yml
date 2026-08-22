@@ -4,12 +4,18 @@ server:
 spring:
   application:
     name: runner-service
+  output:
+    ansi:
+      enabled: always
   cloud:
     nacos:
       discovery:
         server-addr: ${NACOS_ADDR:192.168.0.192:8848}
     sentinel:
       eager: true
+      log:
+        dir: ${SENTINEL_LOG_DIR:logs/sentinel/runner}
+        switch-pid: true
       transport:
         dashboard: ${SENTINEL_DASHBOARD:192.168.0.192:8858}
         client-ip: ${SENTINEL_CLIENT_IP:192.168.0.197}
@@ -58,6 +64,9 @@ springdoc:
 # 绑定见 runner.biz 的 RunnerProperties（@ConfigurationProperties(prefix="ma.runner")）。
 # ============================================================
 ma:
+  internal-auth:
+    secret: ${MA_INTERNAL_AUTH_SECRET:middleware-arena-internal-token}
+    replay-window-ms: 300000
   oss:
     endpoint: ${OSS_ENDPOINT:https://oss-cn-beijing.aliyuncs.com}
     bucket: ${OSS_BUCKET:middleware-arena}
@@ -123,7 +132,7 @@ ma:
       jdk-home: /usr/local/jdk
       local-repo: /usr/local/maven/repo
       offline: true
-    # 阶段进度回传（TODO：接入 MQ/Feign 后 enabled=true）
+    # 阶段进度通过 RabbitMQ 回传 experiment-service。
     progress:
-      enabled: false
+      enabled: true
       target: mq

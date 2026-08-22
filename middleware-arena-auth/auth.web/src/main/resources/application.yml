@@ -4,20 +4,26 @@ server:
 spring:
   application:
     name: auth-service
+  output:
+    ansi:
+      enabled: always
   cloud:
     nacos:
       discovery:
         server-addr: ${NACOS_ADDR:192.168.0.192:8848}
     sentinel:
       eager: true
+      log:
+        dir: ${SENTINEL_LOG_DIR:logs/sentinel/auth}
+        switch-pid: true
       transport:
         dashboard: ${SENTINEL_DASHBOARD:192.168.0.192:8858}
         client-ip: ${SENTINEL_CLIENT_IP:192.168.0.197}
         port: ${SENTINEL_PORT:8720}
   datasource:
-    url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/middleware_arena?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/ma_auth?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: root
-    password: ${MYSQL_PASSWORD:root123}
+    password: ${MYSQL_PASSWORD:@Feng050813}
     driver-class-name: com.mysql.cj.jdbc.Driver
   data:
     redis:
@@ -33,11 +39,14 @@ mybatis-plus:
 
 ma:
   internal-token: ${MA_INTERNAL_TOKEN:middleware-arena-internal-token}
+  internal-auth:
+    secret: ${MA_INTERNAL_AUTH_SECRET:middleware-arena-internal-token}
+    replay-window-ms: 300000
   jwt:
     # 生产环境务必用环境变量覆盖
     secret: ${MA_JWT_SECRET:middleware-arena-default-secret-key-please-override-2026}
-    access-ttl-ms: 900000        # 15 分钟
-    refresh-ttl-ms: 604800000    # 7 天（双 token 接入后使用）
+    access-ttl-ms: 31536000000   # 365 天（开发环境：基本等于永久；生产用环境变量覆盖）
+    refresh-ttl-ms: 31536000000  # 365 天（双 token 接入后使用）
 
 management:
   endpoints:

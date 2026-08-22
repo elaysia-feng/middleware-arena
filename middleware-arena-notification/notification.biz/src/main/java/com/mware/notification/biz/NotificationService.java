@@ -4,6 +4,7 @@ import com.mware.notification.dto.request.NotificationRequest;
 import com.mware.notification.dto.response.NotificationResponse;
 
 import java.util.List;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * 通知业务接口。
@@ -30,4 +31,7 @@ public interface NotificationService {
 
     /** 实时推送新通知（SSE / WebSocket） */
     void push(Long userId, NotificationRequest request);
+
+    /** 建立当前用户的 SSE 通知连接。 */
+    SseEmitter subscribe(Long userId);
 }

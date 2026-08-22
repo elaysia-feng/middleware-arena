@@ -2,6 +2,8 @@ package com.mware.community.biz.comment;
 
 import com.mware.community.dto.response.CommentResponse;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -108,6 +110,19 @@ public class CommentCache {
             return Boolean.TRUE.equals(exists);
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    /** 评论增删后按帖子扫描并删除分页缓存，避免写后仍读到旧列表。 */
+    public void evictPost(Long postId) {
+        ScanOptions options = ScanOptions.scanOptions()
+                .match(KEY_PREFIX + "p" + postId + ":*")
+                .count(100)
+                .build();
+        try (Cursor<String> cursor = redisTemplate.scan(options)) {
+            cursor.forEachRemaining(redisTemplate::delete);
+        } catch (Exception ignored) {
+            // 缓存清理失败时主业务仍成功，最多由 TTL 自然修复。
         }
     }
 }

@@ -1,89 +1,200 @@
 package com.mware.community.biz.post.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mware.common.web.ApiException;
 import com.mware.common.web.ErrorCode;
 import com.mware.common.web.UserContext;
 import com.mware.community.biz.post.PostService;
+import com.mware.community.biz.like.LikeRedisStore;
+import com.mware.community.biz.favorite.FavoriteRedisStore;
 import com.mware.community.domain.CommunityPost;
 import com.mware.community.dto.request.CreatePostRequest;
 import com.mware.community.dto.response.PostResponse;
 import com.mware.community.mapper.CommunityPostMapper;
+import com.mware.community.mapper.CommentMapper;
+import com.mware.community.mapper.PostFavoriteMapper;
+import com.mware.community.mapper.PostLikeMapper;
+import com.mware.community.domain.Comment;
+import com.mware.community.domain.PostFavorite;
+import com.mware.community.domain.PostLike;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 帖子业务实现（骨架占位）。
- * <p>
- * TODO[社区]：接入 community.mapper 后，按各方法 1.2.3. 编号步骤逐个实现。
- * Request→domain、domain→Response 映射统一在本实现内部完成，Controller 只做薄转发。
+ * 帖子 CRUD、分页和详情缓存实现。
  */
 @Service
 public class PostServiceImpl implements PostService {
 
+    private static final int MAX_PAGE_SIZE = 50;
+    private static final int TITLE_MAX_LENGTH = 255;
+    private static final String CACHE_PREFIX = "community:post:";
+    private static final Duration CACHE_TTL = Duration.ofMinutes(10);
+
     private final CommunityPostMapper communityPostMapper;
+    private final CommentMapper commentMapper;
+    private final PostLikeMapper postLikeMapper;
+    private final PostFavoriteMapper postFavoriteMapper;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final LikeRedisStore likeRedisStore;
+    private final FavoriteRedisStore favoriteRedisStore;
 
-    public PostServiceImpl(CommunityPostMapper communityPostMapper) {
+    public PostServiceImpl(CommunityPostMapper communityPostMapper,
+                           CommentMapper commentMapper,
+                           PostLikeMapper postLikeMapper,
+                           PostFavoriteMapper postFavoriteMapper,
+                           RedisTemplate<String, Object> redisTemplate,
+                           LikeRedisStore likeRedisStore,
+                           FavoriteRedisStore favoriteRedisStore) {
         this.communityPostMapper = communityPostMapper;
+        this.commentMapper = commentMapper;
+        this.postLikeMapper = postLikeMapper;
+        this.postFavoriteMapper = postFavoriteMapper;
+        this.redisTemplate = redisTemplate;
+        this.likeRedisStore = likeRedisStore;
+        this.favoriteRedisStore = favoriteRedisStore;
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public PostResponse createPost(CreatePostRequest request) {
-        // Request → domain：authorId 从 UserContext 注入，防伪造
+        validateRequest(request);
+        LocalDateTime now = LocalDateTime.now();
         CommunityPost post = CommunityPost.builder()
-                .title(request.getTitle())
-                .content(request.getContent())
+                .title(request.getTitle().trim())
+                .content(request.getContent().trim())
                 .authorId(currentUserId())
+                .likeCount(0L)
+                .likeVersion(0L)
+                .favoriteCount(0L)
+                .favoriteVersion(0L)
+                .commentCount(0L)
+                .createdAt(now)
+                .updatedAt(now)
                 .build();
-        // TODO[社区]：发布帖子
-        //   1. 校验 title / content 非空，非法抛 ApiException(PARAM_INVALID)
-        //   2. 补默认值：createdAt / updatedAt（authorId 已在 Service 从 UserContext 注入，防伪造）
-        //   3. communityPostMapper.insert(post)，MyBatis-Plus 回填自增 id
-        //   4. 返回带 id 的 post
+        communityPostMapper.insert(post);
         return toPostResponse(post);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public PostResponse updatePost(Long postId, CreatePostRequest request) {
-        // Request → domain：authorId 从 UserContext 注入，供作者权限校验；postId 以路径为准
-        CommunityPost post = CommunityPost.builder()
-                .id(postId)
-                .title(request.getTitle())
-                .content(request.getContent())
-                .authorId(currentUserId())
-                .build();
-        // TODO[社区]：编辑帖子
-        //   1. communityPostMapper.selectById(post.getId())，不存在抛 ApiException(NOT_FOUND)
-        //   2. 校验作者权限：post.authorId == 当前登录用户，防越权改他人帖子
-        //   3. communityPostMapper.updateById(post)，由 DB 刷新 updated_at
-        //   4. 返回更新后的 post
+        validatePostId(postId);
+        validateRequest(request);
+        CommunityPost post = requirePost(postId);
+        requireAuthor(post);
+        post.setTitle(request.getTitle().trim());
+        post.setContent(request.getContent().trim());
+        post.setUpdatedAt(LocalDateTime.now());
+        communityPostMapper.updateById(post);
+        evictCacheAfterCommit(postId);
         return toPostResponse(post);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void deletePost(Long postId) {
-        // TODO[社区]：删除帖子
-        //   1. 校验帖子存在 + 作者权限（同 updatePost 1/2）
-        //   2. communityPostMapper.deleteById(postId)
-        //   3. 级联清理：删除该帖的评论 / 点赞 / 收藏记录
+        validatePostId(postId);
+        CommunityPost post = requirePost(postId);
+        requireAuthor(post);
+
+        commentMapper.delete(new LambdaQueryWrapper<Comment>().eq(Comment::getPostId, postId));
+        postLikeMapper.delete(new LambdaQueryWrapper<PostLike>().eq(PostLike::getPostId, postId));
+        postFavoriteMapper.delete(new LambdaQueryWrapper<PostFavorite>().eq(PostFavorite::getPostId, postId));
+        communityPostMapper.deleteById(postId);
+        cleanPostStateAfterCommit(postId);
     }
 
     @Override
     public PostResponse getPost(Long postId) {
-        // TODO[社区]：帖子详情
-        //   1. Redis Cache-Aside：先读缓存，命中直接返回
-        //   2. 未命中则 communityPostMapper.selectById(postId)，不存在抛 ApiException(NOT_FOUND)
-        //   3. 写回 Redis 缓存（设置过期时间）
-        return null;
+        validatePostId(postId);
+        Object cached = redisTemplate.opsForValue().get(cacheKey(postId));
+        if (cached instanceof PostResponse response) {
+            return response;
+        }
+
+        PostResponse response = toPostResponse(requirePost(postId));
+        redisTemplate.opsForValue().set(cacheKey(postId), response, CACHE_TTL);
+        return response;
     }
 
     @Override
     public List<PostResponse> pagePosts(int page, int size) {
-        // TODO[社区]：帖子分页列表
-        //   1. 构造 Page<CommunityPost>(page, size)
-        //   2. communityPostMapper.selectPage(page, wrapper orderByDesc created_at)
-        //   3. 返回 page.getRecords() 并逐个映射为 PostResponse
-        return null;
+        validatePage(page, size);
+        Page<CommunityPost> postPage = new Page<>(page, size);
+        communityPostMapper.selectPage(postPage, new LambdaQueryWrapper<CommunityPost>()
+                .orderByDesc(CommunityPost::getCreatedAt));
+        return postPage.getRecords().stream().map(this::toPostResponse).toList();
+    }
+
+    private CommunityPost requirePost(Long postId) {
+        CommunityPost post = communityPostMapper.selectById(postId);
+        if (post == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "帖子不存在");
+        }
+        return post;
+    }
+
+    private void requireAuthor(CommunityPost post) {
+        if (!post.getAuthorId().equals(currentUserId())) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "仅作者可操作自己的帖子");
+        }
+    }
+
+    private void validateRequest(CreatePostRequest request) {
+        if (request == null || request.getTitle() == null || request.getTitle().trim().isEmpty()) {
+            throw new ApiException(ErrorCode.PARAM_INVALID, "帖子标题不能为空");
+        }
+        if (request.getTitle().trim().length() > TITLE_MAX_LENGTH) {
+            throw new ApiException(ErrorCode.PARAM_INVALID, "帖子标题不能超过 255 字");
+        }
+        if (request.getContent() == null || request.getContent().trim().isEmpty()) {
+            throw new ApiException(ErrorCode.PARAM_INVALID, "帖子内容不能为空");
+        }
+    }
+
+    private void validatePostId(Long postId) {
+        if (postId == null || postId <= 0) {
+            throw new ApiException(ErrorCode.PARAM_INVALID, "帖子 ID 必须为正数");
+        }
+    }
+
+    private void validatePage(int page, int size) {
+        if (page < 1 || size < 1 || size > MAX_PAGE_SIZE) {
+            throw new ApiException(ErrorCode.PARAM_INVALID, "分页参数非法");
+        }
+    }
+
+    private String cacheKey(Long postId) {
+        return CACHE_PREFIX + postId;
+    }
+
+    private void evictCacheAfterCommit(Long postId) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                redisTemplate.delete(cacheKey(postId));
+            }
+        });
+    }
+
+    private void cleanPostStateAfterCommit(Long postId) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                redisTemplate.delete(cacheKey(postId));
+                likeRedisStore.deletePostState(postId);
+                favoriteRedisStore.deletePostState(postId);
+            }
+        });
     }
 
     /**

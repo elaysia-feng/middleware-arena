@@ -8,6 +8,7 @@ import com.rabbitmq.client.Channel;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.messaging.handler.annotation.Header;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -23,11 +24,14 @@ public class LikePersistenceConsumer {
 
     private final PostLikeMapper postLikeMapper;
     private final CommunityPostMapper communityPostMapper;
+    private final RedisTemplate<String, Object> redisTemplate;
 
     public LikePersistenceConsumer(PostLikeMapper postLikeMapper,
-                                   CommunityPostMapper communityPostMapper) {
+                                   CommunityPostMapper communityPostMapper,
+                                   RedisTemplate<String, Object> redisTemplate) {
         this.postLikeMapper = postLikeMapper;
         this.communityPostMapper = communityPostMapper;
+        this.redisTemplate = redisTemplate;
     }
 
     @RabbitListener(queues = RabbitLikeConfig.QUEUE_PERSIST, ackMode = "MANUAL")
@@ -48,6 +52,7 @@ public class LikePersistenceConsumer {
                 event.getPostId(),
                 event.getLikeCount(),
                 event.getVersion());
+        redisTemplate.delete("community:post:" + event.getPostId());
 
         //   3. 两个持久化步骤都执行成功后才 ACK；抛异常时交给 Rabbit Retry / DLQ 处理。
         channel.basicAck(deliveryTag, false);

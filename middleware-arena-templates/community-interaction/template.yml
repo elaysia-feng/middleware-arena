@@ -1,0 +1,33 @@
+# 点赞与收藏共享可靠性目标，但保留各自独立代码，便于分别调整和观察。
+name: 社区点赞收藏可靠异步持久化
+middlewareType: REDIS_RABBITMQ
+scenario: COMMUNITY_INTERACTION
+description: Redis Lua 状态写模型、Stream Outbox、RabbitMQ 和 MySQL version 幂等落库。
+tags: Lua,StreamOutbox,PublisherConfirm,幂等,分库分表
+status: ENABLED
+runParams:
+  concurrencyLadder: [20, 50, 100, 200]
+  duration: 30s
+  redisPartitions: 64
+  stateShards: 256
+  relayBatchSize: 200
+  consistencyWait: 10s
+files:
+  - path: middleware-arena-community/community.biz/src/main/java/com/mware/community/biz/like/LikeRedisStore.java
+    language: java
+    editable: true
+  - path: middleware-arena-community/community.biz/src/main/java/com/mware/community/biz/favorite/FavoriteRedisStore.java
+    language: java
+    editable: true
+  - path: middleware-arena-community/community.biz/src/main/java/com/mware/community/biz/like/LikeStreamRelay.java
+    language: java
+    editable: true
+  - path: middleware-arena-community/community.biz/src/main/java/com/mware/community/biz/favorite/FavoriteStreamRelay.java
+    language: java
+    editable: true
+  - path: middleware-arena-community/community.web/src/main/resources/application.yml
+    language: yaml
+    editable: true
+  - path: jmeter/like-stress-test.jmx
+    language: xml
+    editable: true

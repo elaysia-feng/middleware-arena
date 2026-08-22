@@ -141,6 +141,10 @@
                     <configuration>
                         <release>${maven.compiler.release}</release>
                         <encoding>UTF-8</encoding>
+                        <!-- 关键：让字节码保留参数名（Spring @PathVariable 需要）
+                             没有这个 flag，CommunityController.like(@PathVariable Long postId)
+                             会抛 IllegalArgumentException -->
+                        <parameters>true</parameters>
                     </configuration>
                 </plugin>
                 <plugin>

@@ -31,6 +31,9 @@
           <el-button
             type="primary"
             class="login-btn"
+            :loading="submitting"
+            :disabled="submitting"
+            native-type="submit"
             @click="handleLogin"
           >
             登 录
@@ -46,9 +49,14 @@ import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { type FormInstance, type FormRules } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { login, getMe } from '@/api/auth'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
+const submitting = ref(false)
+const userStore = useUserStore()
 
 const form = reactive({
   username: '',
@@ -60,16 +68,21 @@ const rules: FormRules = {
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
 
-// TODO: handleLogin —— 调 auth.ts 的 login，成功后跳转首页
-// 1. 表单校验通过后，调用 auth.login({ username, password })
-// 2. 成功后调用 userStore.setTokens 存储双 token
-// 3. router.push('/') 跳转首页
-// 4. 失败时展示 el-message 错误提示
 async function handleLogin() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
-  // TODO: 登录逻辑待实现
-  console.log('登录表单:', form)
+  submitting.value = true
+  try {
+    const tokens = await login(form)
+    userStore.setTokens(tokens.accessToken, tokens.refreshToken)
+    userStore.setUserInfo(await getMe())
+    ElMessage.success('登录成功')
+    await router.replace('/')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '登录失败')
+  } finally {
+    submitting.value = false
+  }
 }
 </script>
 

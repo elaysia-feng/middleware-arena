@@ -1,5 +1,7 @@
 package com.mware.community.biz.favorite;
 
+import com.mware.community.dto.response.FavoriteStatusResponse;
+
 /**
  * 收藏业务接口（面向接口编程）。
  * <p>
@@ -7,6 +9,12 @@ package com.mware.community.biz.favorite;
  */
 public interface FavoriteService {
 
-    /** 收藏 / 取消收藏 */
+    /** 收藏（幂等）。 */
     void favorite(Long postId, Long userId);
+
+    /** 取消收藏（幂等）。 */
+    void unfavorite(Long postId, Long userId);
+
+    /** 查询当前用户的收藏状态与实时收藏数。 */
+    FavoriteStatusResponse favoriteStatus(Long postId, Long userId);
 }

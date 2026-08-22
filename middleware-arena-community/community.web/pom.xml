@@ -32,6 +32,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- MySQL 驱动（ShardingSphere 不传递引入） -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <dependency>
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
@@ -57,10 +63,48 @@
             <artifactId>shardingsphere-jdbc</artifactId>
             <version>5.5.3</version>
         </dependency>
+        <!-- shardingsphere-infra-url-classpath：提供 classpath: URL Loader 的实现 + SPI 注册
+             （ClassPathLocalFileURLLoader + META-INF/services/...ShardingSphereLocalFileURLLoader）
+             shardingsphere-jdbc 5.5.x 没传递依赖这个，必须显式声明，否则抛：
+             SPI-00001 No implementation class load from SPI
+             'org.apache.shardingsphere.infra.url.spi.ShardingSphereModeConfigurationURLLoader' -->
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-infra-url-classpath</artifactId>
+            <version>5.5.3</version>
+        </dependency>
+        <!-- shardingsphere-standalone-mode-repository-memory：Standalone 模式内存仓库实现 -->
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-standalone-mode-repository-memory</artifactId>
+            <version>5.5.3</version>
+        </dependency>
         <dependency>
             <groupId>org.apache.shardingsphere</groupId>
             <artifactId>shardingsphere-sharding-core</artifactId>
             <version>5.5.3</version>
+        </dependency>
+        <!-- HikariCP 字段别名元数据（jdbcUrl -> url）；缺失时 ShardingSphere 初始化 StorageUnit 会报空指针。 -->
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-infra-data-source-pool-hikari</artifactId>
+            <version>5.5.3</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-jdbc-dialect-mysql</artifactId>
+            <version>5.5.3</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-authority-simple</artifactId>
+            <version>5.5.3</version>
+        </dependency>
+        <!-- ShardingSphere 5.5.3 使用 org.apache.commons.lang3.Strings，不能被 Boot BOM 降到 3.14.0。 -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.18.0</version>
         </dependency>
 
         <dependency>
@@ -80,6 +124,11 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals><goal>repackage</goal></goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

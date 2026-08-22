@@ -23,6 +23,7 @@
         <module>order.mapper</module>
         <module>order.feign</module>
         <module>order.config</module>
+        <module>order.test</module>
     </modules>
 
     <!-- 内部模块版本管理：子模块之间可无版本引用 -->

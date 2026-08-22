@@ -4,21 +4,32 @@ server:
 spring:
   application:
     name: product-service
+  output:
+    ansi:
+      enabled: always
   cloud:
     nacos:
       discovery:
         server-addr: ${NACOS_ADDR:192.168.0.192:8848}
     sentinel:
       eager: true
+      log:
+        dir: ${SENTINEL_LOG_DIR:logs/sentinel/product}
+        switch-pid: true
       transport:
         dashboard: ${SENTINEL_DASHBOARD:192.168.0.192:8858}
         client-ip: ${SENTINEL_CLIENT_IP:192.168.0.197}
         port: ${SENTINEL_PORT:8728}
   datasource:
-    url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/middleware_arena?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/ma_product?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: root
-    password: ${MYSQL_PASSWORD:root123}
+    password: ${MYSQL_PASSWORD:@Feng050813}
     driver-class-name: com.mysql.cj.jdbc.Driver
+
+ma:
+  internal-auth:
+    secret: ${MA_INTERNAL_AUTH_SECRET:middleware-arena-internal-token}
+    replay-window-ms: 300000
 
 management:
   endpoints:

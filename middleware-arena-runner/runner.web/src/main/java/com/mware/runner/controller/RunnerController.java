@@ -43,13 +43,13 @@ public class RunnerController {
 
     @Operation(summary = "取消本地运行中的任务（联调 / 手动触发；正常取消由 CancelConsumer 走定向队列）")
     @PostMapping("/task/{taskId}/cancel")
-    public ApiResponse<Boolean> cancel(@PathVariable Long taskId) {
+    public ApiResponse<Boolean> cancel(@PathVariable("taskId") Long taskId) {
         return ApiResponse.ok(runnerService.cancelTask(taskId));
     }
 
     @Operation(summary = "查询任务进度（状态由 experiment-service 持有）")
     @GetMapping("/task/{taskId}/status")
-    public ApiResponse<String> getTaskStatus(@PathVariable Long taskId) {
+    public ApiResponse<String> getTaskStatus(@PathVariable("taskId") Long taskId) {
         return ApiResponse.ok(runnerService.getTaskStatus(taskId));
     }
 }

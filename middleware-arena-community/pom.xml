@@ -21,6 +21,7 @@
         <module>community.domain</module>
         <module>community.dto</module>
         <module>community.mapper</module>
+        <module>community.test</module>
     </modules>
 
     <dependencyManagement>

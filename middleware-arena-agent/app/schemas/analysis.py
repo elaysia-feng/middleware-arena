@@ -183,3 +183,34 @@ class AnalysisResult(BaseModel):
         default_factory=dict,
         description="LangGraph 最终输出；后续由你逐步替换为更明确的结构化结果",
     )
+
+
+class AnalysisContext(BaseModel):
+    """experiment-service 返回给 load_context 节点的可信实验上下文。"""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    task_id: int = Field(alias="taskId", gt=0)
+    user_id: int = Field(alias="userId", gt=0)
+    version_id: int = Field(alias="versionId", gt=0)
+    baseline_task_id: int | None = Field(default=None, alias="baselineTaskId", gt=0)
+    middleware_type: str = Field(alias="middlewareType", min_length=1)
+    config: dict[str, Any] = Field(default_factory=dict)
+    files: list[dict[str, Any]] = Field(default_factory=list)
+    code_diff: list[dict[str, Any]] = Field(default_factory=list, alias="codeDiff")
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    baseline_metrics: dict[str, Any] = Field(default_factory=dict, alias="baselineMetrics")
+    logs: list[str] = Field(default_factory=list)
+
+
+class SimilarExperiment(BaseModel):
+    """experiment-service 返回的一条历史相似实验。"""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    task_id: int = Field(alias="taskId", gt=0)
+    version_id: int = Field(alias="versionId", gt=0)
+    middleware_type: str = Field(alias="middlewareType", min_length=1)
+    scenario: str | None = None
+    similarity_score: float = Field(alias="similarityScore", ge=0, le=1)
+    metrics: dict[str, Any] = Field(default_factory=dict)

@@ -22,6 +22,7 @@
         <module>account.dto</module>
         <module>account.mapper</module>
         <module>account.feign</module>
+        <module>account.test</module>
     </modules>
 
     <!-- 内部模块版本管理：子模块之间可无版本引用 -->

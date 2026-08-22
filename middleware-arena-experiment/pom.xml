@@ -23,6 +23,7 @@
         <module>experiment.domain</module>
         <module>experiment.dto</module>
         <module>experiment.mapper</module>
+        <module>experiment.test</module>
     </modules>
 
     <dependencyManagement>

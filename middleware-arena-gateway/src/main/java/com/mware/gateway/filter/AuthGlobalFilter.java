@@ -35,7 +35,8 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
 
     /** 无需登录即可访问的路径（登录 / 刷新令牌 / 健康检查） */
     private static final List<PathPattern> WHITELIST = List.of(
-            PathPatternParser.defaultInstance.parse("/auth/login/**"),
+            PathPatternParser.defaultInstance.parse("/auth/login"),
+            PathPatternParser.defaultInstance.parse("/auth/register"),
             PathPatternParser.defaultInstance.parse("/auth/refresh"),
             PathPatternParser.defaultInstance.parse("/actuator/**")
     );
@@ -44,8 +45,8 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
 
     private final JwtUtil jwtUtil;
 
-    /** 与下游共享的验签密钥，需通过环境变量覆盖；未配置则下游不验签 */
-    @Value("${ma.internal-auth.secret:}")
+    /** 与下游共享的验签密钥，生产环境通过环境变量覆盖。 */
+    @Value("${ma.internal-auth.secret:middleware-arena-internal-token}")
     private String internalAuthSecret;
 
     public AuthGlobalFilter(JwtUtil jwtUtil) {

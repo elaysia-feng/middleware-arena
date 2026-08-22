@@ -6,7 +6,7 @@ import com.mware.order.dto.response.OrderResponse;
 /**
  * 订单业务接口。
  * <p>
- * 方法签名已定，具体实现留待接入 Seata / Feign / Redis / RabbitMQ 后补齐。
+ * 创建订单由 Seata AT 统一协调订单、库存和账户三个业务库。
  */
 public interface OrderService {
 

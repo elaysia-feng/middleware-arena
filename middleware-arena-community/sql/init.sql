@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS `community_post` (
     content        TEXT          NOT NULL COMMENT '帖子内容',
     author_id      BIGINT        NOT NULL COMMENT '作者用户 ID',
     like_count     BIGINT        NOT NULL DEFAULT 0 COMMENT '点赞数（异步聚合写入，最终一致）',
+    like_version   BIGINT        NOT NULL DEFAULT 0 COMMENT '最近落库的点赞事件版本',
     favorite_count BIGINT        NOT NULL DEFAULT 0 COMMENT '收藏数（异步聚合写入，最终一致）',
+    favorite_version BIGINT      NOT NULL DEFAULT 0 COMMENT '最近落库的收藏事件版本',
     comment_count  BIGINT        NOT NULL DEFAULT 0 COMMENT '评论数（异步聚合写入，最终一致）',
     created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -32,7 +34,10 @@ CREATE TABLE IF NOT EXISTS `post_like` (
     id         BIGINT   NOT NULL AUTO_INCREMENT COMMENT '主键',
     post_id    BIGINT   NOT NULL COMMENT '帖子 ID（分片键，路由依据）',
     user_id    BIGINT   NOT NULL COMMENT '点赞用户 ID',
+    liked      TINYINT(1) NOT NULL DEFAULT 1 COMMENT '最终点赞状态；0 为取消点赞 tombstone',
+    version    BIGINT   NOT NULL DEFAULT 0 COMMENT '点赞事件版本，防乱序覆盖',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '点赞时间',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '状态更新时间',
     PRIMARY KEY (id),
     UNIQUE KEY uk_post_user (post_id, user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='社区点赞事实表（分库分表）';
@@ -42,7 +47,10 @@ CREATE TABLE IF NOT EXISTS `post_favorite` (
     id         BIGINT   NOT NULL AUTO_INCREMENT COMMENT '主键',
     post_id    BIGINT   NOT NULL COMMENT '帖子 ID',
     user_id    BIGINT   NOT NULL COMMENT '收藏用户 ID',
+    favorited  TINYINT(1) NOT NULL DEFAULT 1 COMMENT '最终收藏状态；0 为取消收藏 tombstone',
+    version    BIGINT   NOT NULL DEFAULT 0 COMMENT '收藏事件版本，防乱序覆盖',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '收藏时间',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '状态更新时间',
     PRIMARY KEY (id),
     UNIQUE KEY uk_post_user (post_id, user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='社区收藏表';

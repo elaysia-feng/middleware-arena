@@ -1,44 +1,97 @@
-"""Agent 分析业务编排入口。
+"""HTTP 与 RabbitMQ 共用的 Agent 分析业务编排入口。"""
 
-HTTP 和 RabbitMQ 是两种不同的“入口协议”，但最终都必须进入这个 Service：
+from typing import Any
 
-HTTP AnalyzeRequest --------┐
-                            ├─> AnalysisCommand -> run_analysis -> AnalysisResult
-MQ AgentAnalysisTaskMessage ┘
-
-这样做的目的：
-1. HTTP/MQ 不会各写一套 LangGraph 调用逻辑。
-2. Consumer 只负责消息可靠性，Router 只负责 HTTP，不承担 AI 业务。
-3. 以后单元测试可以直接构造 AnalysisCommand 测试核心分析，不需要真的启动 FastAPI/RabbitMQ。
-
-真正的性能诊断逻辑继续放在 ``app.graph``，这个文件只做业务流程编排。
-"""
-
+from app.clients.langfuse import build_langfuse_run_config
+from app.core.config import get_settings
+from app.graph.builder import analysis_graph
 from app.schemas.analysis import AnalysisCommand, AnalysisResult
 
 
 async def run_analysis(command: AnalysisCommand) -> AnalysisResult:
-    """启动一次完整的中间件性能分析。
-
-    参数：
-        command: 已经由 HTTP/MQ 转换好的统一业务命令。
-
-    返回：
-        AnalysisResult。上层再决定转成 HTTP Response 还是 MQ Status Message。
-
-    这里最终应该负责“串流程”，而不是把所有节点代码直接写进一个函数。
-    """
-
-    # TODO[Agent Core - 由你实现]:
-    # 1. 根据 command 构造最小初始 AnalysisState。
-    # 2. 调 graph/builder.py 获取已经 compile 的 LangGraph。
-    # 3. invoke/ainvoke Graph，由 load_context 自己通过 Tool 拉取 version / metrics / diff / logs。
-    # 4. 注入 Langfuse callback / trace metadata：analysisId、taskId、versionId 等。
-    # 5. Graph 内部完成 metrics/code/subgraph/hypothesis/judge/patch/report。
-    # 6. 从最终 AnalysisState 提取协议无关的 AnalysisResult。
-    # 7. 自动优化循环最多执行 settings.agent_max_analysis_iterations 次。
-    # 8. 任何“真正应用 Patch / 创建新 Version”的写操作都必须经过 Human-in-the-loop。
-
-    raise NotImplementedError(
-        "TODO[Agent Core]: 在 app/services/analysis.py::run_analysis 中接入 LangGraph"
+    """执行完整诊断图，并转换为与传输协议无关的结果。"""
+    settings = get_settings()
+    initial_state = _build_initial_state(command)
+    final_state = await analysis_graph.ainvoke(
+        initial_state,
+        config={
+            **build_langfuse_run_config(
+                run_name="middleware-analysis-workflow",
+                metadata={
+                    "analysisId": command.analysis_id,
+                    "taskId": command.task_id,
+                    "versionId": command.version_id,
+                    "middlewareType": command.middleware_type,
+                    "analysisType": command.analysis_type,
+                    "triggerType": command.trigger_type,
+                    "dispatchId": command.dispatch_id,
+                },
+            ),
+            # 当前主图没有自动重跑，但仍限制最大递归步数，防止未来错误接边无限循环。
+            "recursion_limit": max(
+                30,
+                settings.agent_max_analysis_iterations * 20,
+            ),
+        },
     )
+    return AnalysisResult(
+        analysis_id=command.analysis_id,
+        task_id=command.task_id,
+        status="SUCCESS",
+        trace_id=final_state.get("trace_id"),
+        data=_build_result_data(final_state),
+    )
+
+
+def _build_initial_state(command: AnalysisCommand) -> dict[str, Any]:
+    """只把已知命令字段写入 State，实验事实统一由 load_context 查询。"""
+    settings = get_settings()
+    state: dict[str, Any] = {
+        "task_id": command.task_id,
+        "analysis_type": command.analysis_type,
+        "trigger_type": command.trigger_type,
+        "iteration": 0,
+        "max_iterations": settings.agent_max_analysis_iterations,
+        "patch_confidence_threshold": (
+            settings.agent_patch_confidence_threshold
+        ),
+    }
+    optional_fields = {
+        "analysis_id": command.analysis_id,
+        "user_id": command.user_id,
+        "version_id": command.version_id,
+        "baseline_task_id": command.baseline_task_id,
+        "middleware_type": command.middleware_type,
+        "dispatch_id": command.dispatch_id,
+    }
+    state.update(
+        {
+            name: value
+            for name, value in optional_fields.items()
+            if value is not None
+        }
+    )
+    return state
+
+
+def _build_result_data(state: dict[str, Any]) -> dict[str, Any]:
+    """过滤原始代码和日志，只返回前端真正需要的诊断结果。"""
+    return {
+        "middlewareType": state.get("middleware_type"),
+        "metricFindings": state.get("metric_findings", []),
+        "logFindings": state.get("log_findings", []),
+        "codeFindings": state.get("code_findings", []),
+        "similarExperiments": state.get("similar_experiments", []),
+        "evidenceSummary": state.get("evidence_summary", {}),
+        "hypotheses": state.get("ranked_hypotheses", []),
+        "bottleneck": state.get("bottleneck", {}),
+        "confidence": state.get("confidence", 0),
+        "suggestions": state.get("suggestions", []),
+        "confidenceRoute": state.get("confidence_route"),
+        "confidenceRouteReason": state.get("confidence_route_reason"),
+        "patches": state.get("patches", []),
+        "patchSummary": state.get("patch_summary", {}),
+        "nextAction": state.get("next_action"),
+        "report": state.get("report", ""),
+        "reportSummary": state.get("report_summary", {}),
+    }

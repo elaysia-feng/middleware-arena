@@ -55,7 +55,7 @@ public class OrderController {
 
     @Operation(summary = "查询订单详情")
     @GetMapping("/{orderId}")
-    public ApiResponse<OrderResponse> getOrder(@PathVariable Long orderId) {
+    public ApiResponse<OrderResponse> getOrder(@PathVariable("orderId") Long orderId) {
         return ApiResponse.ok(orderService.getOrder(orderId));
     }
 }

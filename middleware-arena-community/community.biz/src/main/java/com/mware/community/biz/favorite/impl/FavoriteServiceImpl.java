@@ -1,29 +1,38 @@
 package com.mware.community.biz.favorite.impl;
 
 import com.mware.community.biz.favorite.FavoriteService;
-import com.mware.community.mapper.PostFavoriteMapper;
+import com.mware.community.biz.favorite.FavoriteRedisStore;
+import com.mware.community.dto.response.FavoriteStatusResponse;
 import org.springframework.stereotype.Service;
 
 /**
- * 收藏业务实现（骨架占位）。
- * <p>
- * TODO[社区]：接入 community.mapper 后实现。
+ * 收藏业务实现。请求链路只写 Redis，MySQL 由 Stream → RabbitMQ 异步持久化。
  */
 @Service
 public class FavoriteServiceImpl implements FavoriteService {
 
-    private final PostFavoriteMapper postFavoriteMapper;
+    private final FavoriteRedisStore favoriteRedisStore;
 
-    public FavoriteServiceImpl(PostFavoriteMapper postFavoriteMapper) {
-        this.postFavoriteMapper = postFavoriteMapper;
+    public FavoriteServiceImpl(FavoriteRedisStore favoriteRedisStore) {
+        this.favoriteRedisStore = favoriteRedisStore;
     }
 
     @Override
     public void favorite(Long postId, Long userId) {
-        // TODO[社区]：收藏 / 取消收藏（表 post_favorite，post_id + user_id 唯一）
-        //   1. postFavoriteMapper.selectCount(eq post_id, eq user_id) 判定是否已收藏
-        //   2. 不存在：insert（收藏）
-        //   3. 存在：deleteById（取消收藏）
-        //   4. 收藏数同点赞链路走 outbox + MQ 异步聚合（eventType=FAVORITE/UNFAVORITE）
+        favoriteRedisStore.setFavorited(postId, userId, true);
+    }
+
+    @Override
+    public void unfavorite(Long postId, Long userId) {
+        favoriteRedisStore.setFavorited(postId, userId, false);
+    }
+
+    @Override
+    public FavoriteStatusResponse favoriteStatus(Long postId, Long userId) {
+        return FavoriteStatusResponse.builder()
+                .postId(postId)
+                .favorited(favoriteRedisStore.isFavorited(postId, userId))
+                .favoriteCount(favoriteRedisStore.favoriteCount(postId))
+                .build();
     }
 }

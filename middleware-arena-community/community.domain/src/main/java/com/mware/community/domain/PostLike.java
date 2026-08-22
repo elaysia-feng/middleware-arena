@@ -1,5 +1,7 @@
 package com.mware.community.domain;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -16,6 +18,8 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class PostLike {
+    @TableId(type = IdType.AUTO)
+    private Long id;
     private Long postId;
     private Long userId;
     private Boolean liked;

@@ -77,6 +77,39 @@ class ExperimentClient:
             response.raise_for_status()
             return response.json()
 
+    async def get_analysis_context(
+        self,
+        task_id: int,
+        baseline_task_id: int | None = None,
+    ) -> dict[str, Any]:
+        """读取 load_context 节点所需的完整实验上下文。"""
+        params = {"baselineTaskId": baseline_task_id} if baseline_task_id else None
+        response = await self.get_json(
+            f"/experiment/internal/agent/context/{task_id}",
+            params=params,
+        )
+        if not isinstance(response, dict) or response.get("code") != 200:
+            message = response.get("message") if isinstance(response, dict) else None
+            raise RuntimeError(message or "experiment-service 返回格式错误")
+        context = response.get("data")
+        if not isinstance(context, dict):
+            raise RuntimeError("experiment-service 未返回分析上下文")
+        return context
+
+    async def find_similar_experiments(self, task_id: int, limit: int = 5) -> list[dict[str, Any]]:
+        """读取同中间件、同场景且指标接近的历史成功实验。"""
+        response = await self.get_json(
+            f"/experiment/internal/agent/similar/{task_id}",
+            params={"limit": limit},
+        )
+        if not isinstance(response, dict) or response.get("code") != 200:
+            message = response.get("message") if isinstance(response, dict) else None
+            raise RuntimeError(message or "experiment-service 返回格式错误")
+        matches = response.get("data")
+        if not isinstance(matches, list):
+            raise RuntimeError("experiment-service 未返回相似实验列表")
+        return [item for item in matches if isinstance(item, dict)]
+
     # TODO[需要你和 Java internal API 一起定]:
     # 1. get_task(task_id)：获取实验任务基本信息。
     # 2. get_result(task_id)：获取 QPS/P95/Error/CPU/Memory + metricsJson。

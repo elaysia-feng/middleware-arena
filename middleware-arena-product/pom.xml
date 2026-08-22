@@ -22,6 +22,7 @@
         <module>product.dto</module>
         <module>product.mapper</module>
         <module>product.feign</module>
+        <module>product.test</module>
     </modules>
 
     <!-- 内部模块版本管理：子模块之间可无版本引用 -->

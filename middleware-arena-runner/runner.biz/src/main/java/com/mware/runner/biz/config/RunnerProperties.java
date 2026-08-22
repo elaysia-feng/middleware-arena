@@ -37,7 +37,7 @@ public class RunnerProperties {
     /** 用户 SUT 的构建环境 */
     private Build build = new Build();
 
-    /** 进度回传（TODO：接入 MQ / Feign 后启用） */
+    /** 任务阶段、成功指标和失败原因的回传配置。 */
     private Progress progress = new Progress();
 
     @Data

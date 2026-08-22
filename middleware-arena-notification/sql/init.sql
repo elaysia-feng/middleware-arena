@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS `notification`
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     INDEX idx_user (user_id),
     INDEX idx_user_read (user_id, is_read),
-    INDEX idx_source (source_type, source_id)
+    INDEX idx_source (source_type, source_id),
+    UNIQUE KEY uk_user_source_type (user_id, source_type, source_id, type)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='站内通知表';

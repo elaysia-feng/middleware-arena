@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.MediaType;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
@@ -64,7 +66,7 @@ public class NotificationController {
 
     @Operation(summary = "标记已读")
     @PostMapping("/{notificationId}/read")
-    public ApiResponse<Void> markRead(@PathVariable Long notificationId) {
+    public ApiResponse<Void> markRead(@PathVariable("notificationId") Long notificationId) {
         notificationService.markRead(notificationId, currentUserId());
         return ApiResponse.ok();
     }
@@ -72,8 +74,8 @@ public class NotificationController {
     @Operation(summary = "分页获取通知列表")
     @GetMapping("/list")
     public ApiResponse<List<NotificationResponse>> pageNotifications(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size) {
         return ApiResponse.ok(notificationService.pageNotifications(currentUserId(), page, size));
     }
 
@@ -81,6 +83,12 @@ public class NotificationController {
     @GetMapping("/unread-count")
     public ApiResponse<Long> unreadCount() {
         return ApiResponse.ok(notificationService.unreadCount(currentUserId()));
+    }
+
+    @Operation(summary = "订阅实时通知（SSE）")
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter stream() {
+        return notificationService.subscribe(currentUserId());
     }
 
     @Operation(summary = "实时推送新通知（SSE / WebSocket / 手动触发）")

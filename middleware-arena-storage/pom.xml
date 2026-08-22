@@ -22,6 +22,7 @@
         <module>storage.dto</module>
         <module>storage.mapper</module>
         <module>storage.feign</module>
+        <module>storage.test</module>
     </modules>
 
     <!-- 内部模块版本管理：子模块之间可无版本引用 -->

@@ -3,12 +3,19 @@ server:
 spring:
   application:
     name: community-service
+  output:
+    ansi:
+      enabled: always
   cloud:
     nacos:
       discovery:
         server-addr: ${NACOS_ADDR:192.168.0.192:8848}
     sentinel:
       eager: true
+      # 每个服务使用独立 Sentinel 日志目录，避免多个进程争用默认 ~/logs/csp 文件。
+      log:
+        dir: ${SENTINEL_LOG_DIR:logs/sentinel/community}
+        switch-pid: true
       transport:
         dashboard: ${SENTINEL_DASHBOARD:192.168.0.192:8858}
         client-ip: ${SENTINEL_CLIENT_IP:192.168.0.197}
@@ -43,11 +50,27 @@ community:
     stream-hard-limit: 500000
     # 热门榜与统计幂等键保留两天。
     statistics-ttl-seconds: 172800
+  favorite:
+    # 收藏与点赞使用相同的 Redis 分区、状态分片和可靠 Stream Outbox 语义。
+    redis-partitions: 64
+    state-shards: 256
+    relay-interval-ms: 200
+    relay-batch-size: 200
+    confirm-timeout-ms: 3000
+    stream-hard-limit: 500000
   # 旧 MySQL Transactional Outbox 留给尚未迁移的其它社区事件；点赞最终链路使用 Redis Stream Outbox。
   outbox:
     enabled: false
     relay-interval-ms: 5000
     relay-batch-size: 100
+
+# 网关透传身份头用的 HMAC 密钥（直接 curl/JMeter 测点赞时也用这个）
+ma:
+  internal-token: ${MA_INTERNAL_TOKEN:middleware-arena-internal-token}
+  internal-auth:
+    secret: ${MA_INTERNAL_AUTH_SECRET:middleware-arena-internal-token}
+    replay-window-ms: 300000
+
 management:
   endpoints:
     web:

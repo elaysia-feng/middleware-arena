@@ -1,0 +1,7 @@
+timeStamp,elapsed,label,responseCode,responseMessage,threadName,dataType,success,failureMessage,bytes,sentBytes,grpThreads,allThreads,URL,Latency,IdleTime,Connect
+1787387907450,55,PUT /community/post/{id}/like,200,,Like Thread Group 1-2,text,true,,217,332,2,2,http://127.0.0.1:9002/community/post/1/like,49,0,32
+1787387907450,55,PUT /community/post/{id}/like,200,,Like Thread Group 1-1,text,true,,217,332,2,2,http://127.0.0.1:9002/community/post/1/like,49,0,32
+1787387907509,10,PUT /community/post/{id}/like,200,,Like Thread Group 1-2,text,true,,217,332,2,2,http://127.0.0.1:9002/community/post/1/like,10,0,0
+1787387907509,10,PUT /community/post/{id}/like,200,,Like Thread Group 1-1,text,true,,217,332,2,2,http://127.0.0.1:9002/community/post/1/like,10,0,0
+1787387907522,10,PUT /community/post/{id}/like,200,,Like Thread Group 1-2,text,true,,217,332,2,2,http://127.0.0.1:9002/community/post/1/like,10,0,0
+1787387907522,10,PUT /community/post/{id}/like,200,,Like Thread Group 1-1,text,true,,217,332,2,2,http://127.0.0.1:9002/community/post/1/like,10,0,0

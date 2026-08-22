@@ -16,6 +16,10 @@ import com.mware.community.mapper.CommunityPostMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -49,16 +53,20 @@ public class CommentServiceImpl implements CommentService {
     private final CommentMapper commentMapper;
     private final CommunityPostMapper communityPostMapper;
     private final CommentCache commentCache;
+    private final RedisTemplate<String, Object> redisTemplate;
 
     public CommentServiceImpl(CommentMapper commentMapper,
                               CommunityPostMapper communityPostMapper,
-                              CommentCache commentCache) {
+                              CommentCache commentCache,
+                              RedisTemplate<String, Object> redisTemplate) {
         this.commentMapper = commentMapper;
         this.communityPostMapper = communityPostMapper;
         this.commentCache = commentCache;
+        this.redisTemplate = redisTemplate;
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public CommentResponse addComment(Long postId, CommentRequest request) {
         // 1. 内容校验：非空 + 长度上限
         //    业务侧先把关；Controller 层若再加 @Size 也行，本处不依赖
@@ -107,14 +115,11 @@ public class CommentServiceImpl implements CommentService {
                 .build();
         commentMapper.insert(comment); // MyBatis-Plus 回填 comment.getId()
 
-        // 5. 不在这里同步 +1 CommunityPost.commentCount
-        //    计数由 outbox 异步聚合链路写入（见 PostServiceImpl 注释），保持最终一致语义
-        //    当前 outbox 链路未接通时也不临时同步写，避免后续接入时数据双写不一致
-        // TODO[社区]：接入 outbox 事件后，本步骤无需改动
+        // 5. 评论和计数在同一个本地事务提交，避免 outbox 关闭时计数长期不更新。
+        communityPostMapper.changeCommentCount(postId, 1L);
 
-        // 6. 不主动失效缓存：addComment 后让 5min TTL 自然过期（v1 设计决策）
-        //    评论增删高频触发，主动失效（按 postId 清掉 page=1/2/3 三页）成本 > 5min 脏读代价
-        //    v2 若接 outbox 事件，可由 eventType=COMMENT 消费者精准失效
+        // 6. 事务提交后再访问 Redis，避免外部调用扩大数据库事务边界。
+        evictCachesAfterCommit(postId);
 
         return toCommentResponse(comment);
     }
@@ -175,6 +180,7 @@ public class CommentServiceImpl implements CommentService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void deleteComment(Long postId, Long commentId) {
         // 1. 评论存在性校验
         Comment comment = commentMapper.selectById(commentId);
@@ -193,21 +199,23 @@ public class CommentServiceImpl implements CommentService {
         if (!comment.getAuthorId().equals(currentUserId())) {
             throw new ApiException(ErrorCode.FORBIDDEN, "仅作者可删除自己的评论");
         }
-        // TODO[社区]：管理员 / 超管删除任意评论另开方法（adminDeleteComment），不在本方法扩展角色判断
+        // 当前公开接口只允许作者删除；管理员审核删除不混入本方法。
 
         // 4. 级联硬删：先删子回复，再删自己（顺序：先子后父，避免子记录短暂悬挂）
         //    用 delete(Wrapper) 而不是逐条 deleteById，单 SQL 搞定
         //    硬删 + 级联是当前骨架阶段选择；生产化应改为软删 + 审计日志（is_deleted / 状态字段 + 操作流水表）
-        // TODO[社区]：生产化时改为软删：Comment 加 is_deleted 字段 + 操作审计表
+        // 当前数据模型采用硬删；若引入审核/恢复能力，再单独增加软删字段和审计流水。
+        long replyCount = commentMapper.selectCount(new LambdaQueryWrapper<Comment>()
+                .eq(Comment::getParentId, commentId));
         commentMapper.delete(new LambdaQueryWrapper<Comment>()
                 .eq(Comment::getParentId, commentId));
         commentMapper.deleteById(commentId);
 
-        // 5. 不在这里同步 -1 CommunityPost.commentCount
-        //    计数由 outbox 异步聚合链路写入（最终一致），保持与 addComment 一致的语义
-        // TODO[社区]：接入 outbox 事件后，本步骤无需改动
+        // 5. 删除一级评论时把其直接回复一并从帖子评论数扣除。
+        communityPostMapper.changeCommentCount(postId, -(replyCount + 1L));
 
-        // 6. 不主动失效缓存：与 addComment 一致，靠 TTL 自然过期（v1 设计决策）
+        // 6. 事务提交后再清理缓存。
+        evictCachesAfterCommit(postId);
     }
 
     /**
@@ -223,6 +231,16 @@ public class CommentServiceImpl implements CommentService {
                 .orderByAsc(Comment::getCreatedAt);
         commentMapper.selectPage(mpPage, wrapper);
         return mpPage.getRecords().stream().map(this::toCommentResponse).toList();
+    }
+
+    private void evictCachesAfterCommit(Long postId) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                redisTemplate.delete("community:post:" + postId);
+                commentCache.evictPost(postId);
+            }
+        });
     }
 
     /**

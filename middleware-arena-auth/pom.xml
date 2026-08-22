@@ -21,6 +21,7 @@
         <module>auth.domain</module>
         <module>auth.dto</module>
         <module>auth.mapper</module>
+        <module>auth.test</module>
     </modules>
 
     <!-- 内部模块版本管理：子模块之间可无版本引用（复用模板） -->

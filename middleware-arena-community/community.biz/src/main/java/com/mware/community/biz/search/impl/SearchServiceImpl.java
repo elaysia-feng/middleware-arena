@@ -1,25 +1,62 @@
 package com.mware.community.biz.search.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.mware.common.web.ApiException;
+import com.mware.common.web.ErrorCode;
 import com.mware.community.biz.search.SearchService;
+import com.mware.community.domain.CommunityPost;
 import com.mware.community.dto.response.PostResponse;
+import com.mware.community.mapper.CommunityPostMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
 /**
- * 全文搜索业务实现（骨架占位）。
- * <p>
- * TODO[社区]：ES 依赖未接入（biz pom 暂无 spring-data-elasticsearch），实现留待接入 ES 后补齐。
+ * 帖子搜索实现。当前环境未配置 Elasticsearch，先提供可用的 MySQL 标题/正文搜索兜底。
  */
 @Service
 public class SearchServiceImpl implements SearchService {
 
+    private static final int MAX_PAGE_SIZE = 50;
+
+    private final CommunityPostMapper communityPostMapper;
+
+    public SearchServiceImpl(CommunityPostMapper communityPostMapper) {
+        this.communityPostMapper = communityPostMapper;
+    }
+
     @Override
     public List<PostResponse> search(String keyword, int page, int size) {
-        // TODO[社区]：ES 全文搜索
-        //   1. ES 查询 community_post 索引：title + content 字段 matchQuery，关键词高亮
-        //   2. 分页返回命中结果
-        //   3. 兜底方案：ES 不可用时降级为 MySQL LIKE（title / content contains keyword）
-        return null;
+        if (keyword == null || keyword.trim().isEmpty()) {
+            throw new ApiException(ErrorCode.PARAM_INVALID, "搜索关键词不能为空");
+        }
+        if (page < 1 || size < 1 || size > MAX_PAGE_SIZE) {
+            throw new ApiException(ErrorCode.PARAM_INVALID, "分页参数非法");
+        }
+
+        String normalizedKeyword = keyword.trim();
+        Page<CommunityPost> postPage = new Page<>(page, size);
+        communityPostMapper.selectPage(postPage, new LambdaQueryWrapper<CommunityPost>()
+                .and(wrapper -> wrapper
+                        .like(CommunityPost::getTitle, normalizedKeyword)
+                        .or()
+                        .like(CommunityPost::getContent, normalizedKeyword))
+                .orderByDesc(CommunityPost::getCreatedAt));
+
+        return postPage.getRecords().stream().map(this::toPostResponse).toList();
+    }
+
+    private PostResponse toPostResponse(CommunityPost post) {
+        return PostResponse.builder()
+                .id(post.getId())
+                .title(post.getTitle())
+                .content(post.getContent())
+                .authorId(post.getAuthorId())
+                .likeCount(post.getLikeCount())
+                .favoriteCount(post.getFavoriteCount())
+                .commentCount(post.getCommentCount())
+                .createdAt(post.getCreatedAt())
+                .build();
     }
 }

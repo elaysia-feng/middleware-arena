@@ -13,6 +13,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.ArrayList;
 import java.util.stream.IntStream;
 
 /**
@@ -108,16 +109,16 @@ public class LikeRedisStore {
      * 将某个用户对某个帖子的点赞状态设置为目标状态。
      */
     public MutationResult setLiked(Long postId, Long userId, boolean liked) {
-        //   1. 校验业务参数和分片配置，防止错误配置导致取模异常或 Stream 无保护增长。
+        // 1. 校验业务参数和分片配置，防止错误配置导致取模异常或 Stream 无保护增长。
         validate(postId, userId);
         if (redisPartitions <= 0 || stateShards <= 0 || streamHardLimit <= 0) {
             throw new IllegalStateException("community.like Redis partition/shard/stream limits must be positive");
         }
 
-        //   2. eventId 在状态真正发生变化时写入 Stream，后续贯穿 RabbitMQ 和消费幂等链路。
+        // 2. eventId 在状态真正发生变化时写入 Stream，后续贯穿 RabbitMQ 和消费幂等链路。
         String eventId = UUID.randomUUID().toString().replace("-", "");
 
-        //   3. 四个 Redis Key 使用相同 Cluster HashTag，保证 Lua 在 Redis Cluster 下仍落在同一 slot。
+        // 3. 四个 Redis Key 使用相同 Cluster HashTag，保证 Lua 在 Redis Cluster 下仍落在同一 slot。
         @SuppressWarnings("unchecked")
         List<Object> result = redisTemplate.execute(
                 SET_STATE_SCRIPT,
@@ -125,8 +126,7 @@ public class LikeRedisStore {
                         stateKey(postId, userId),
                         countKey(postId),
                         versionKey(postId),
-                        streamKey(postId)
-                ),
+                        streamKey(postId)),
                 String.valueOf(userId),
                 liked ? "1" : "0",
                 eventId,
@@ -134,7 +134,7 @@ public class LikeRedisStore {
                 String.valueOf(Instant.now().toEpochMilli()),
                 String.valueOf(streamHardLimit));
 
-        //   4. Lua 固定返回：目标状态 / 最新点赞数 / version / 是否真正发生状态变化。
+        // 4. Lua 固定返回：目标状态 / 最新点赞数 / version / 是否真正发生状态变化。
         if (result == null || result.size() < 4) {
             throw new IllegalStateException("Redis like Lua returned invalid result");
         }
@@ -184,6 +184,20 @@ public class LikeRedisStore {
                 .toList();
     }
 
+    /** 帖子删除后清理该帖的点赞状态、计数和版本；共享分区 Stream 不在这里删除。 */
+    public void deletePostState(Long postId) {
+        if (postId == null || postId <= 0 || stateShards <= 0) {
+            return;
+        }
+        List<String> keys = new ArrayList<>(stateShards + 2);
+        keys.add(countKey(postId));
+        keys.add(versionKey(postId));
+        for (int shard = 0; shard < stateShards; shard++) {
+            keys.add("like:" + tag(partition(postId)) + ":post:" + postId + ":user-state:" + shard);
+        }
+        redisTemplate.delete(keys);
+    }
+
     /**
      * Redis Stream MapRecord → 点赞事件 DTO。
      * <p>
@@ -210,20 +224,20 @@ public class LikeRedisStore {
      * 将点赞/取消点赞事件计入当天热榜。
      */
     public boolean applyStatistics(LikeEvent event) {
-        //   1. 热榜按点赞事件所属 postId 分区，保持 Redis Cluster 同槽操作。
+        // 1. 热榜按点赞事件所属 postId 分区，保持 Redis Cluster 同槽操作。
         int partition = partition(event.getPostId());
         String tag = tag(partition);
 
-        //   2. 按业务时区生成日榜 Key，避免一个永久 ZSet 无限增长。
+        // 2. 按业务时区生成日榜 Key，避免一个永久 ZSet 无限增长。
         String day = Instant.ofEpochMilli(event.getTimestamp())
                 .atZone(BUSINESS_ZONE)
                 .toLocalDate()
                 .format(DAY);
 
-        String doneKey = "like:" + tag + ":stats:done:" + event.getEventId();
+        String doneKey = "like:" + tag + ":idem:" + event.getEventId();
         String hotKey = "like:" + tag + ":hot:" + day;
 
-        //   3. Lua 内先用 eventId SETNX 去重，再修改 ZSet，保证 MQ 重复投递不会重复累计。
+        // 3. Lua 内先用 eventId SETNX 去重，再修改 ZSet，保证 MQ 重复投递不会重复累计。
         Long changed = redisTemplate.execute(
                 STATISTICS_SCRIPT,
                 List.of(doneKey, hotKey),
@@ -239,7 +253,7 @@ public class LikeRedisStore {
     }
 
     private String streamKeyByPartition(int partition) {
-        return "like:" + tag(partition) + ":events";
+        return "like:" + tag(partition) + ":post-events";
     }
 
     private String countKey(Long postId) {
@@ -247,12 +261,12 @@ public class LikeRedisStore {
     }
 
     private String versionKey(Long postId) {
-        return "like:" + tag(partition(postId)) + ":post:" + postId + ":version";
+        return "like:" + tag(partition(postId)) + ":post:" + postId + ":ver";
     }
 
     private String stateKey(Long postId, Long userId) {
         int shard = Math.floorMod(userId, stateShards);
-        return "like:" + tag(partition(postId)) + ":post:" + postId + ":state:" + shard;
+        return "like:" + tag(partition(postId)) + ":post:" + postId + ":user-state:" + shard;
     }
 
     /** postId → Redis 事件分区。 */
@@ -261,10 +275,12 @@ public class LikeRedisStore {
     }
 
     /**
-     * Redis Cluster HashTag，同一个分区相关 Key 都包含相同的 {like:pN}。
+     * Redis Cluster HashTag，同一分区相关 Key（state/count/ver/stream/idempotent/hot）
+     * 都包含相同的 {pN}，保证同一分区所有 Key 落到同一个 slot → Lua 脚本可以原子操作。
+     * 注意：partition + ":" 之间是字面字符（无业务意义），用于避免不同分区 key 同 slot。
      */
     private String tag(int partition) {
-        return "{like:p" + partition + "}";
+        return "{p" + partition + "}";
     }
 
     private static String text(Map<Object, Object> value, String key) {
@@ -295,6 +311,14 @@ public class LikeRedisStore {
      * @param likeCount 当前实时点赞数
      * @param version   本次状态变更 version；幂等未变化时为 0
      * @param changed   本次请求是否真的改变了状态
+     */
+    /**
+     * Lua 状态变更结果。
+     *
+     * @param liked 当前最终点赞状态
+     * @param likeCount Lua 执行后的实时点赞数
+     * @param version 状态发生变化时生成的事件版本；幂等请求为 0
+     * @param changed 本次请求是否真正改变了状态
      */
     public record MutationResult(boolean liked, long likeCount, long version, boolean changed) {
     }

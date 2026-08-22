@@ -1,11 +1,45 @@
-"""Redis 专家 SubGraph 占位。
+"""Redis 专家 SubGraph 构建入口。"""
 
-1. 分析 Redis 命令模式、缓存访问方式、连接与内存相关证据。
-2. 识别 N+1 GET、Big Key、Hot Key、穿透/击穿/雪崩等候选问题。
-3. 输出 Redis 专属 findings，交给主图统一生成 hypotheses。
+from functools import partial
+from typing import Any
 
-TODO:
-- [ ] 定义 Redis SubGraph state 输入/输出契约。
-- [ ] 接入 redis diagnosis Prompt。
-- [ ] 增加 Redis 专属 Tool：命令统计、key 特征、连接信息。
-"""
+from langgraph.graph import END, START, StateGraph
+
+from app.graph.state import AnalysisState
+from app.graph.subgraphs.redis.nodes import (
+    collect_redis_diagnostics,
+    collect_redis_signals,
+    diagnose_redis,
+    route_redis_diagnostics,
+)
+from app.tools.providers import AnalysisToolProvider
+
+
+def build_redis_subgraph(
+    provider: AnalysisToolProvider | None = None,
+    chat_model: Any | None = None,
+):
+    """构建可嵌入主图的 Redis 专家 SubGraph。"""
+    graph = StateGraph(AnalysisState)
+    graph.add_node("collect_redis_signals", collect_redis_signals)
+    graph.add_node(
+        "collect_redis_diagnostics",
+        partial(collect_redis_diagnostics, provider=provider),
+    )
+    graph.add_node("diagnose_redis", partial(diagnose_redis, chat_model=chat_model))
+
+    graph.add_edge(START, "collect_redis_signals")
+    graph.add_conditional_edges(
+        "collect_redis_signals",
+        route_redis_diagnostics,
+        {
+            "collect_redis_diagnostics": "collect_redis_diagnostics",
+            "diagnose_redis": "diagnose_redis",
+        },
+    )
+    graph.add_edge("collect_redis_diagnostics", "diagnose_redis")
+    graph.add_edge("diagnose_redis", END)
+    return graph.compile()
+
+
+redis_subgraph = build_redis_subgraph()

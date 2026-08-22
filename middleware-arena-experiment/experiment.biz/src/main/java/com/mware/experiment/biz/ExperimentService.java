@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.mware.experiment.dto.request.CreateTemplateRequest;
 import com.mware.experiment.dto.request.UpdateTemplateRequest;
 import com.mware.experiment.dto.response.TaskResponse;
+import com.mware.experiment.dto.response.AgentAnalysisContextResponse;
+import com.mware.experiment.dto.response.SimilarExperimentResponse;
 import com.mware.experiment.dto.response.TemplateResponse;
 import com.mware.experiment.dto.response.VersionDiffResponse;
 import com.mware.experiment.dto.response.VersionResponse;
@@ -58,4 +60,10 @@ public interface ExperimentService {
 
     /** 重试失败任务 */
     TaskResponse retryTask(Long taskId);
+
+    /** Agent 内部接口：加载一次分析所需的任务、版本、指标、基线和代码差异。 */
+    AgentAnalysisContextResponse getAgentAnalysisContext(Long taskId, Long baselineTaskId);
+
+    /** Agent 内部接口：检索同中间件、同场景且指标接近的历史成功实验。 */
+    List<SimilarExperimentResponse> findSimilarExperiments(Long taskId, int limit);
 }

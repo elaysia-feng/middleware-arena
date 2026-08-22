@@ -11,11 +11,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
-/**
- * 订单实体（骨架占位）。
- * <p>
- * TODO[Seata 分布式事务]：字段与 sql/init.sql 同步。
- */
+/** 订单实体，字段与 {@code sql/init.sql} 保持一致。 */
 @Data
 @TableName("`order`")
 @Builder
@@ -30,6 +26,9 @@ public class Order {
     private Long userId;
     // 对外订单号
     private String orderNo;
+
+    /** 客户端请求标识，数据库唯一键作为 Redis 幂等之外的最终防线。 */
+    private String requestId;
 
     private Long productId;
 

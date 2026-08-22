@@ -81,7 +81,7 @@ public class AuthController {
     @Operation(summary = "内部服务查询用户会员状态")
     @GetMapping("/internal/users/{userId}/membership")
     public ApiResponse<MembershipResponse> membership(
-            @PathVariable Long userId,
+            @PathVariable("userId") Long userId,
             @RequestHeader(value = "X-Internal-Token", required = false) String token) {
         if (!internalToken.equals(token)) {
             throw new ApiException(403, "内部服务凭证无效");

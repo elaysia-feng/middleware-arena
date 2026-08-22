@@ -150,42 +150,63 @@ Content-Type: application/json
 
 ## 4. LangGraph 主流程
 
-目标主链：
+当前实现主链：
 
-```text
-START
-  ↓
-read_result
-  ↓
-compare_metrics
-  ↓
-┌─────────────────────────────────────┐
-│ Evidence Analysis                   │
-│                                     │
-│ retrieve_similar ─┐                 │
-│ analyze_logs ─────┼→ evidence merge │
-│ analyze_diff ─────┘                 │
-└─────────────────────────────────────┘
-  ↓
-judge_bottleneck
-  ↓
-generate_report
-  ↓
-END
+```mermaid
+flowchart TD
+    Start([START]) --> Load[加载实验上下文]
+
+    Load --> Metrics[指标对比]
+    Load --> Logs[日志分析]
+    Load --> Code[代码 Diff 分析]
+    Load --> Similar[检索相似实验]
+
+    Metrics --> Reducer[合并证据]
+    Logs --> Reducer
+    Code --> Reducer
+    Similar --> Reducer
+
+    Reducer --> Middleware{识别中间件类型}
+    Middleware --> Redis[Redis 专家子图]
+    Middleware --> RabbitMQ[RabbitMQ 专家子图]
+    Middleware --> Seata[Seata 专家子图]
+    Middleware --> ES[Elasticsearch 专家子图]
+    Middleware --> Generic[通用专家子图]
+
+    Redis --> Hypothesis[生成瓶颈假设]
+    RabbitMQ --> Hypothesis
+    Seata --> Hypothesis
+    ES --> Hypothesis
+    Generic --> Hypothesis
+
+    Hypothesis --> Judge[证据裁决]
+    Judge --> Confidence{置信度足够且已确认?}
+    Confidence -->|是| Patch[生成候选 Patch]
+    Confidence -->|否| Report[生成诊断报告]
+    Patch --> Report
+    Report --> End([END])
+
+    Patch -.人工审核后.-> Version[创建新版本并重跑]
+    Version -.独立 compare 流程.-> Compare[对比优化结果]
 ```
 
-后续可以把 Evidence Analysis 抽成 SubGraph，并让 `retrieve_similar`、`analyze_logs`、`analyze_diff` 并行执行。
+`Patch` 只生成可审核候选内容。应用 Patch、创建版本和重跑属于写操作，必须经过
+人工确认后由 Java 服务执行，不在一次 `/agent/analyze` 调用中自动发生。
 
-### 7 个节点职责
+### 主要节点职责
 
 | 节点 | 是否调用 LLM | 输入 | 输出 | 完成标准 |
 |---|---:|---|---|---|
-| `read_result` | 否 | API 请求 | 标准化后的实验数据 | 缺失字段有默认值；异常输入能明确报错 |
-| `compare_metrics` | 否 | metrics + baseline | metric_analysis + evidence | 代码计算 QPS/P95/错误率/CPU/内存变化，不让 LLM 做算术 |
+| `load_context` | 否 | taskId | 标准化实验上下文 | 只从 Java 内部接口读取可信事实 |
+| `analyze_metrics` | 否 | metrics + baseline | metric findings + evidence | 代码计算变化，不让 LLM 做算术 |
 | `retrieve_similar` | 否 | experiment_type + config + metrics | similar_experiments | 从 Elasticsearch 查同类历史实验；ES 不可用时允许降级为空列表 |
 | `analyze_logs` | 是 | 精简后的日志 | log_analysis + evidence | 提取超时、OOM、连接池耗尽、锁等待、MQ 堆积等异常证据 |
-| `analyze_diff` | 是 | code_diff + experiment_type | diff_analysis + evidence | 判断代码变更可能影响的性能维度，不允许凭空声称已发生故障 |
+| `analyze_code` | 否 | code diff + rule | code findings + evidence | 规则只标风险，不把代码模式直接判成已发生故障 |
+| `middleware_router` | 否 | middleware type | expert route | 未知类型进入通用专家，不中断流程 |
+| `generate_hypothesis` | 是 | 专家输出 + evidence | ranked hypotheses | 假设必须引用有效 evidenceId |
 | `judge_bottleneck` | 是 | 所有分析证据 | bottleneck + confidence + suggestions | 输出结构化诊断；结论必须引用 evidence |
+| `confidence_router` | 否 | judgement + confidence | patch/report route | 只有 CONFIRMED 且达到阈值才生成 Patch |
+| `generate_patch` | 是 | 已确认瓶颈 + editable files | candidate patches | 不写文件；过滤越权路径和无证据 Patch |
 | `generate_report` | 是 | 完整 AnalysisState | report | 输出 Markdown 报告，包含指标变化、证据、瓶颈、建议和置信度 |
 
 ### 节点设计原则
@@ -284,65 +305,66 @@ final = min(
 
 ---
 
-## 8. 开发 TODO
+## 8. 当前实现与后续项
 
 ### P0 — 先跑通完整 Agent 链路
 
-- [ ] **定义 `/analyze` Request / Response Pydantic 模型**
+- [x] **定义 `/analyze` Request / Response Pydantic 模型**
   - 明确必填字段、默认值和长度限制。
   - 对 `confidence` 限制在 `0~1`。
   - 限制日志条数、单条长度和 Diff 最大长度。
-- [ ] **补全 `AnalysisState`**
+- [x] **补全 `AnalysisState`**
   - 加入 `experiment_type`、`logs`、`metric_analysis`、`log_analysis`、`diff_analysis`、`similar_experiments`。
   - 为并行追加字段预留 reducer。
-- [ ] **实现 `read_result`**
+- [x] **实现 `load_context`**
   - 做字段标准化和基础校验。
   - 不访问 LLM。
-- [ ] **实现 `compare_metrics`**
+- [x] **实现 `analyze_metrics`**
   - 计算 QPS、P95、错误率、CPU、内存的绝对值和百分比变化。
   - 处理基线为 0、字段缺失等边界情况。
-- [ ] **实现 `analyze_logs`**
-  - 使用结构化输出提取异常类型、关键证据、严重程度。
-  - 日志为空时直接返回空分析，不调用 LLM。
-- [ ] **实现 `analyze_diff`**
+- [x] **实现 `analyze_logs`**
+  - 使用确定性规则提取异常类型、关键证据和严重程度。
+  - 日志为空时直接返回空分析。
+- [x] **实现 `analyze_code`**
   - 使用结构化输出判断代码修改可能影响的资源、并发、锁、连接池、序列化等维度。
   - Diff 为空时跳过。
-- [ ] **实现 `judge_bottleneck`**
+- [x] **实现 `judge_bottleneck`**
   - 综合指标、日志、Diff 证据输出 `bottleneck/confidence/evidence/suggestions`。
   - 不允许输出没有证据支持的高置信度结论。
-- [ ] **实现 `generate_report`**
+- [x] **实现 `generate_report`**
   - Markdown 报告至少包含：实验摘要、指标对比、主要证据、瓶颈判断、优化建议、置信度。
-- [ ] **创建 LangGraph `analysis_graph`**
+- [x] **创建 LangGraph `analysis_graph`**
   - 串起 P0 节点。
   - 先使用单主图跑通，不急于拆 SubGraph。
-- [ ] **挂载 `POST /analyze`**
+- [x] **挂载 `POST /agent/analyze`**
   - 调用 graph，并把最终状态转换为 Response。
-- [ ] **增加 Agent 单元测试**
+- [x] **增加 Agent 单元测试**
   - 正常指标、无基线、空日志、空 Diff、LLM 失败至少各覆盖一个用例。
 
 ### P1 — 增强诊断能力
 
-- [ ] **Elasticsearch 相似实验检索 `retrieve_similar`**
-  - 根据 experiment_type、配置、指标特征查询历史实验。
+- [x] **相似实验检索 `retrieve_similar`**
+  - 通过 experiment-service 根据中间件类型、场景、配置和指标距离查询历史实验。
   - 返回 Top-K 历史实验和最终诊断结果。
   - ES 不可用时返回空列表，不阻断主流程。
-- [ ] **Evidence SubGraph**
-  - 将日志分析、Diff 分析、历史检索抽成子图。
+- [x] **并行证据节点与中间件 SubGraph**
+  - 指标、日志、代码 Diff、相似实验并行分析并由 reducer 合并。
   - 支持无依赖节点并发执行。
-- [ ] **按中间件类型拆诊断策略**
+- [x] **按中间件类型拆诊断策略**
   - Redis：大 Key、热 Key、连接池、缓存穿透/击穿、慢命令。
   - RabbitMQ：积压、消费者吞吐、prefetch、ack、重试/死信。
   - Seata：全局锁、分支事务、回滚、TC/TM/RM 调用延迟。
   - Elasticsearch：慢查询、mapping、分片、refresh、bulk、深分页。
-- [ ] **规则诊断 + LLM 诊断融合**
+- [x] **规则诊断 + LLM 诊断融合**
   - 明确确定性规则优先级。
   - LLM 负责补充解释，而不是覆盖硬指标事实。
 
 ### P2 — 工程化与可观测
 
-- [ ] **Langfuse Trace**
+- [x] **Langfuse Trace 与 Prompt Management**
   - 一次实验分析对应一个 Trace。
   - 每个 LangGraph 节点记录输入摘要、输出、耗时、Token、异常。
+  - `scripts/sync_langfuse_prompts.py` 初始化 9 个 production Prompt。
 - [ ] **Langfuse Eval**
   - 建立固定测试集。
   - 评估瓶颈分类正确率、证据引用质量、建议可执行性和结构化输出成功率。
@@ -390,12 +412,13 @@ final = min(
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-cp .env.example .env
+Copy-Item .env.example .env
+.\.venv\Scripts\python.exe scripts\sync_langfuse_prompts.py
 uvicorn app.main:app --reload --port 9500
 ```
 
 健康检查：`GET http://localhost:9500/health`
 
-资源建议：`POST http://localhost:9500/resource/advice`
+资源建议：`POST http://localhost:9500/agent/resource/advice`
 
-实验分析：`POST http://localhost:9500/analyze`（P0 TODO，尚未实现）
+实验分析：`POST http://localhost:9500/agent/analyze`

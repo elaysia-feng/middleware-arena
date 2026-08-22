@@ -58,11 +58,5 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
-        <!-- 商品实体 Product：createOrder 计算金额 amount = price × quantity 时使用（跨项目依赖 product 服务，需显式版本号） -->
-        <dependency>
-            <groupId>com.mware</groupId>
-            <artifactId>product.domain</artifactId>
-            <version>0.1.0-SNAPSHOT</version>
-        </dependency>
     </dependencies>
 </project>

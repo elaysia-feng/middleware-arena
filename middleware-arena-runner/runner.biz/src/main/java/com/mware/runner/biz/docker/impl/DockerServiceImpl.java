@@ -68,8 +68,21 @@ public class DockerServiceImpl implements DockerService {
 
     @Override
     public void startContainer(Long taskId, String role, String image, List<String> extraArgs) {
-        // TODO[Runner]：docker run -d --name {containerName} --network {networkName}
-        // {extraArgs} {image}，见 run()
+        if (taskId == null || role == null || role.isBlank() || image == null || image.isBlank()) {
+            throw new IllegalArgumentException("启动容器缺少 taskId、role 或 image");
+        }
+        List<String> args = new ArrayList<>();
+        args.add("run");
+        args.add("-d");
+        args.add("--name");
+        args.add(containerName(taskId, role));
+        args.add("--network");
+        args.add(networkName(taskId));
+        if (extraArgs != null) {
+            args.addAll(extraArgs);
+        }
+        args.add(image);
+        run(args);
     }
 
     @Override

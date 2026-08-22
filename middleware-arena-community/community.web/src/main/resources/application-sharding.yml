@@ -4,21 +4,21 @@ dataSources:
   ds_meta:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: com.mysql.cj.jdbc.Driver
-    jdbcUrl: $${MYSQL_META_URL::jdbc:mysql://127.0.0.1:3306/ma_community?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Shanghai}
+    jdbcUrl: $${MYSQL_META_URL::jdbc:mysql://127.0.0.1:3306/ma_community?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai}
     username: $${MYSQL_USER::root}
-    password: $${MYSQL_PASSWORD::root}
+    password: "@Feng050813"
   ds_0:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: com.mysql.cj.jdbc.Driver
-    jdbcUrl: $${MYSQL_LIKE_DS0_URL::jdbc:mysql://127.0.0.1:3306/ma_community_ds0?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Shanghai}
+    jdbcUrl: $${MYSQL_LIKE_DS0_URL::jdbc:mysql://127.0.0.1:3306/ma_community_ds0?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai}
     username: $${MYSQL_USER::root}
-    password: $${MYSQL_PASSWORD::root}
+    password: "@Feng050813"
   ds_1:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: com.mysql.cj.jdbc.Driver
-    jdbcUrl: $${MYSQL_LIKE_DS1_URL::jdbc:mysql://127.0.0.1:3306/ma_community_ds1?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Shanghai}
+    jdbcUrl: $${MYSQL_LIKE_DS1_URL::jdbc:mysql://127.0.0.1:3306/ma_community_ds1?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai}
     username: $${MYSQL_USER::root}
-    password: $${MYSQL_PASSWORD::root}
+    password: "@Feng050813"
 
 rules:
   - !SHARDING

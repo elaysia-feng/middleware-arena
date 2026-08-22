@@ -1,0 +1,25 @@
+# experiment-service 模板元数据；files.path 均相对仓库根目录。
+name: Redis 订单详情多级缓存
+middlewareType: REDIS
+scenario: ORDER_CACHE
+description: 对比 MySQL 直查与 Caffeine + Redis Cache-Aside。
+tags: 缓存命中率,热点Key,Cache-Aside
+status: ENABLED
+runParams:
+  concurrencyLadder: [20, 50, 100]
+  duration: 30s
+  warmup: 15s
+  timeout: 3s
+files:
+  - path: middleware-arena-order/order.biz/src/main/java/com/mware/order/biz/impl/OrderServiceImpl.java
+    language: java
+    editable: true
+  - path: middleware-arena-order/order.config/src/main/java/com/mware/order/config/redis/RedisConfig.java
+    language: java
+    editable: true
+  - path: middleware-arena-order/order.config/src/main/java/com/mware/order/config/cache/OrderCacheConfig.java
+    language: java
+    editable: true
+  - path: middleware-arena-order/order.web/src/main/resources/application.yml
+    language: yaml
+    editable: true

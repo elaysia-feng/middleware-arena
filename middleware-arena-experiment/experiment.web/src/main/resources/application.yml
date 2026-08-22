@@ -4,12 +4,18 @@ server:
 spring:
   application:
     name: experiment-service
+  output:
+    ansi:
+      enabled: always
   cloud:
     nacos:
       discovery:
         server-addr: ${NACOS_ADDR:192.168.0.192:8848}
     sentinel:
       eager: true
+      log:
+        dir: ${SENTINEL_LOG_DIR:logs/sentinel/experiment}
+        switch-pid: true
       transport:
         dashboard: ${SENTINEL_DASHBOARD:192.168.0.192:8858}
         client-ip: ${SENTINEL_CLIENT_IP:192.168.0.197}
@@ -34,6 +40,11 @@ spring:
     password: ${RABBIT_PASSWORD:guest}
     publisher-confirm-type: correlated     # Publisher Confirm（异步 ConfirmCallback）
     publisher-returns: true                # Mandatory/Return（不可路由消息回调）
+  datasource:
+    url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/ma_experiment?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:@Feng050813}
+    driver-class-name: com.mysql.cj.jdbc.Driver
 
 management:
   endpoints:
@@ -47,6 +58,9 @@ springdoc:
 
 ma:
   internal-token: ${MA_INTERNAL_TOKEN:middleware-arena-internal-token}
+  internal-auth:
+    secret: ${MA_INTERNAL_AUTH_SECRET:middleware-arena-internal-token}
+    replay-window-ms: 300000
   oss:
     endpoint: ${OSS_ENDPOINT:https://oss-cn-beijing.aliyuncs.com}
     bucket: ${OSS_BUCKET:middleware-arena}

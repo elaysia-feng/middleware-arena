@@ -5,7 +5,7 @@ import com.mware.account.domain.AccountBalance;
 /**
  * 账户业务接口。
  * <p>
- * 方法签名已定，具体实现留待接入 account.mapper / Seata AT 后补齐。
+ * 扣余额接口作为 Seata AT 分支事务参与下单链路。
  * 金额统一单位：分（Long）。
  */
 public interface AccountService {

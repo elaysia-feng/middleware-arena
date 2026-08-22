@@ -1,3 +1,5 @@
+"""Agent 外部诊断工具协议和默认 Provider 行为测试。"""
+
 import unittest
 
 from app.tools import ANALYSIS_TOOL_NAMES, ToolResult, build_analysis_tools

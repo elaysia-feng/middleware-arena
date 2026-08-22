@@ -8,11 +8,11 @@ import com.mware.storage.biz.StorageService;
 import com.mware.storage.domain.Stock;
 import com.mware.storage.mapper.StockMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 库存业务实现（骨架占位）。
- * <p>
- * TODO[Seata AT]：接入 storage.mapper 后逐个实现。
+ * 库存业务实现。扣库存使用带余量条件的单条 UPDATE，避免并发超卖，
+ * 并由 Seata AT 通过 {@code undo_log} 参与全局回滚。
  */
 @Service
 public class StorageServiceImpl implements StorageService {
@@ -24,6 +24,7 @@ public class StorageServiceImpl implements StorageService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void deductStock(Long productId, Integer quantity) {
         // 1. 参数校验(> 0 才合法)
         if (productId == null || quantity == null || quantity <= 0) {
@@ -51,10 +52,13 @@ public class StorageServiceImpl implements StorageService {
 
     @Override
     public Stock getStock(Long productId) {
-        // 1. stockMapper.selectOne(wrapper: product_id = productId)
+        if (productId == null) {
+            throw new ApiException(ErrorCode.PARAM_INVALID);
+        }
         Stock stock = stockMapper.selectOne(new LambdaQueryWrapper<Stock>().eq(Stock::getProductId, productId));
-
-        // 2. 商品不存在返回 null
+        if (stock == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND);
+        }
         return stock;
     }
 }

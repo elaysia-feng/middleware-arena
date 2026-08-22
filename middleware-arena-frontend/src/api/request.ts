@@ -1,36 +1,77 @@
-import axios from 'axios'
+import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
+import { pinia } from '@/stores'
+import { useUserStore } from '@/stores/user'
 
-const request = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE || '/api',
-  timeout: 10000,
+interface ApiResponse<T> {
+  code: number
+  message: string
+  data: T
+}
+
+interface RetryRequestConfig extends InternalAxiosRequestConfig {
+  _retry?: boolean
+}
+
+const baseURL = import.meta.env.VITE_API_BASE || '/api'
+const request = axios.create({ baseURL, timeout: 10000 })
+let refreshPromise: Promise<string> | null = null
+
+request.interceptors.request.use((config) => {
+  const userStore = useUserStore(pinia)
+  if (userStore.accessToken) {
+    config.headers.Authorization = `Bearer ${userStore.accessToken}`
+  }
+  return config
 })
 
-// TODO[双 token]：请求拦截器 —— 从 user store 取 accessToken 注入 Authorization header
-// 注意：axios 实例在模块顶层创建，store 可能尚未初始化，需在拦截器内通过 import 或
-// 从 pinia 实例动态获取 user store（避免循环依赖）。
-request.interceptors.request.use(
-  (config) => {
-    // TODO: 从 user store 读取 accessToken，设置 config.headers.Authorization = `Bearer ${token}`
-    return config
-  },
-  (error) => {
-    return Promise.reject(error)
-  },
-)
+async function refreshAccessToken(): Promise<string> {
+  const userStore = useUserStore(pinia)
+  if (!userStore.refreshToken) throw new Error('登录状态已失效')
 
-// TODO[双 token]：响应拦截器 —— 解包 Result 并处理 401 刷新
-// 1. 后端返回统一结构 { code: number, data: T, message: string }
-// 2. code === 200 时直接返回 data，否则 reject(message)
-// 3. 收到 401 时：用 refreshToken 调 POST /auth/refresh 获取新 accessToken，
-//    存入 store 后重放原请求；refresh 也 401 则跳登录页
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post<ApiResponse<{ accessToken: string; refreshToken: string }>>(
+        `${baseURL}/auth/refresh`,
+        { refreshToken: userStore.refreshToken },
+      )
+      .then(({ data }) => {
+        if (data.code !== 200) throw new Error(data.message)
+        userStore.setTokens(data.data.accessToken, data.data.refreshToken)
+        return data.data.accessToken
+      })
+      .finally(() => {
+        refreshPromise = null
+      })
+  }
+  return refreshPromise
+}
+
+async function retryAfterRefresh(config: RetryRequestConfig) {
+  if (config._retry || config.url?.includes('/auth/refresh')) {
+    throw new Error('登录状态已失效')
+  }
+  config._retry = true
+  config.headers.Authorization = `Bearer ${await refreshAccessToken()}`
+  return request(config)
+}
+
 request.interceptors.response.use(
-  (response) => {
-    const res = response.data
-    // TODO: 根据后端统一返回格式解包
-    return res
+  async (response): Promise<any> => {
+    const body = response.data as ApiResponse<unknown>
+    if (body.code === 200) return body.data
+    if (body.code === 401) return retryAfterRefresh(response.config as RetryRequestConfig)
+    return Promise.reject(new Error(body.message || '请求失败'))
   },
-  (error) => {
-    // TODO: 401 → refresh token 流程
+  async (error: AxiosError): Promise<any> => {
+    if (error.response?.status === 401 && error.config) {
+      try {
+        return await retryAfterRefresh(error.config as RetryRequestConfig)
+      } catch (refreshError) {
+        useUserStore(pinia).logout()
+        if (location.pathname !== '/login') location.assign('/login')
+        return Promise.reject(refreshError)
+      }
+    }
     return Promise.reject(error)
   },
 )

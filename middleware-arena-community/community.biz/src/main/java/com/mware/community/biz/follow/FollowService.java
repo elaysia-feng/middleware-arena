@@ -1,5 +1,7 @@
 package com.mware.community.biz.follow;
 
+import com.mware.community.dto.response.FollowStatusResponse;
+
 /**
  * 关注业务接口（面向接口编程）。
  * <p>
@@ -7,6 +9,12 @@ package com.mware.community.biz.follow;
  */
 public interface FollowService {
 
-    /** 关注 / 取消关注（authorId=被关注者，userId=关注者） */
+    /** 关注（authorId=被关注者，userId=关注者，幂等）。 */
     void follow(Long authorId, Long userId);
+
+    /** 取消关注（幂等）。 */
+    void unfollow(Long authorId, Long userId);
+
+    /** 查询关注状态。 */
+    FollowStatusResponse followStatus(Long authorId, Long userId);
 }

@@ -1,7 +1,7 @@
 package com.mware.order.feign;
 
 import com.mware.common.web.ApiResponse;
-import com.mware.product.domain.Product;
+import com.mware.order.dto.response.ProductSnapshotResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,5 +21,5 @@ public interface ProductClient {
      * @return 商品信息（不存在时 product 侧抛 ApiException，Feign 透传）
      */
     @GetMapping("/product/{productId}")
-    ApiResponse<Product> getProduct(@PathVariable("productId") Long productId);
+    ApiResponse<ProductSnapshotResponse> getProduct(@PathVariable("productId") Long productId);
 }

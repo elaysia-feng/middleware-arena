@@ -4,12 +4,18 @@ server:
 spring:
   application:
     name: gateway
+  output:
+    ansi:
+      enabled: always
   cloud:
     nacos:
       discovery:
         server-addr: ${NACOS_ADDR:192.168.0.192:8848}
     sentinel:
       eager: true
+      log:
+        dir: ${SENTINEL_LOG_DIR:logs/sentinel/gateway}
+        switch-pid: true
       transport:
         dashboard: ${SENTINEL_DASHBOARD:192.168.0.192:8858}
         client-ip: ${SENTINEL_CLIENT_IP:192.168.0.197}
@@ -36,6 +42,22 @@ spring:
           uri: lb://notification-service
           predicates:
             - Path=/notification/**
+        - id: order-service
+          uri: lb://order-service
+          predicates:
+            - Path=/order/**
+        - id: storage-service
+          uri: lb://storage-service
+          predicates:
+            - Path=/storage/**
+        - id: account-service
+          uri: lb://account-service
+          predicates:
+            - Path=/account/**
+        - id: product-service
+          uri: lb://product-service
+          predicates:
+            - Path=/product/**
         # Python Agent 是独立微服务，但当前不注册 Nacos；Gateway 直接按可配置 URL 转发。
         # 对外 HTTP：/agent/analyze、/agent/patch、/agent/compare。
         # 自动分析不经过 Gateway，由 experiment-service -> RabbitMQ -> agent-service。
@@ -53,6 +75,14 @@ spring:
             allow-credentials: true
       default-filters:
         - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials
+
+ma:
+  internal-auth:
+    secret: ${MA_INTERNAL_AUTH_SECRET:middleware-arena-internal-token}
+  jwt:
+    secret: ${MA_JWT_SECRET:middleware-arena-default-secret-key-please-override-2026}
+    access-ttl-ms: 31536000000
+    refresh-ttl-ms: 31536000000
 
 management:
   endpoints:

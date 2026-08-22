@@ -16,11 +16,14 @@ import com.mware.experiment.biz.client.MembershipInfo;
 import com.mware.experiment.domain.ExperimentTask;
 import com.mware.experiment.domain.ExperimentTemplate;
 import com.mware.experiment.domain.ExperimentVersion;
+import com.mware.experiment.domain.ExperimentResult;
 import com.mware.experiment.dto.request.CreateTemplateRequest;
 import com.mware.experiment.dto.request.TemplateFileRequest;
 import com.mware.experiment.dto.request.UpdateTemplateRequest;
 import com.mware.experiment.dto.response.DiffLine;
 import com.mware.experiment.dto.response.FileDiff;
+import com.mware.experiment.dto.response.AgentAnalysisContextResponse;
+import com.mware.experiment.dto.response.SimilarExperimentResponse;
 import com.mware.experiment.dto.response.TaskResponse;
 import com.mware.experiment.dto.response.TemplateResponse;
 import com.mware.experiment.dto.response.VersionDiffResponse;
@@ -62,7 +65,8 @@ import java.util.UUID;
  * <li>任务 = 运行状态（status/currentStage/progress），runner 侧不持久化</li>
  * <li>结果 = 压测指标结构化（experiment_result，task_id 唯一）</li>
  * </ul>
- * 已实现：模板 CRUD + 版本查询；createVersion / rollbackVersion / 任务链路 / diff 均为 TODO。
+ * 模板 CRUD、版本快照与回滚、文件 Diff、任务下发和进度查询均由本服务统一处理。
+ * 任务实际执行依赖 runner-service，版本文件存储依赖 OSS。
  * <p>
  * 归属校验：身份一律来自 {@link UserContext}；update / delete 需为模板创建者。
  * 可见性：模板元数据公开（场景画廊），版本内容（filesJson / runParamsJson）仅创建者可读。
@@ -258,8 +262,7 @@ public class ExperimentServiceImpl implements ExperimentService {
         return toVersionResponse(version, template != null && isOwner(template));
     }
 
-    // ==================== TODO（数据链路，接入 runner / MQ 后实现） ====================
-    // 待验证
+    // ==================== 版本、任务与 runner/MQ 数据链路 ====================
     @Override
     public VersionResponse createVersion(Long templateId, String filesJson, String runParamsJson,
             String changeSummary) {
@@ -817,7 +820,233 @@ public class ExperimentServiceImpl implements ExperimentService {
         return toTaskResponse(task);
     }
 
+    @Override
+    public AgentAnalysisContextResponse getAgentAnalysisContext(Long taskId, Long baselineTaskId) {
+        // 1. 当前任务必须已经成功并产生指标，未完成的数据不能进入诊断流程。
+        ExperimentTask task = experimentTaskMapper.selectById(taskId);
+        if (task == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "实验任务不存在");
+        }
+        if (!"SUCCESS".equals(task.getStatus())) {
+            throw new ApiException(409, "实验任务尚未成功完成");
+        }
+        ExperimentResult result = findResult(taskId);
+
+        // 2. 版本和模板决定代码快照、运行参数及中间件专家路由。
+        ExperimentVersion version = experimentVersionMapper.selectById(task.getVersionId());
+        if (version == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "实验版本不存在");
+        }
+        ExperimentTemplate template = experimentTemplateMapper.selectById(version.getTemplateId());
+        if (template == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "实验模板不存在");
+        }
+
+        // 3. 基线是可选项；指定后必须成功、存在指标，并且与当前任务属于同一模板。
+        Map<String, Object> baselineMetrics = Map.of();
+        List<FileDiff> codeDiff = List.of();
+        if (baselineTaskId != null) {
+            ExperimentTask baselineTask = experimentTaskMapper.selectById(baselineTaskId);
+            if (baselineTask == null || !"SUCCESS".equals(baselineTask.getStatus())) {
+                throw new ApiException(409, "基线实验不存在或尚未成功完成");
+            }
+            ExperimentVersion baselineVersion = experimentVersionMapper.selectById(baselineTask.getVersionId());
+            if (baselineVersion == null || !version.getTemplateId().equals(baselineVersion.getTemplateId())) {
+                throw new ApiException(ErrorCode.PARAM_INVALID, "基线实验必须与当前实验属于同一模板");
+            }
+            baselineMetrics = toMetricMap(findResult(baselineTaskId));
+            try {
+                codeDiff = diffVersion(baselineVersion.getId(), version.getId()).getFileDiffs();
+            } catch (JsonProcessingException e) {
+                throw new ApiException(500, "实验版本代码无法解析");
+            }
+        }
+
+        // 4. 返回标准上下文；Runner 尚未提供独立日志存储时，logs 兼容读取 metricsJson.logs。
+        return AgentAnalysisContextResponse.builder()
+                .taskId(task.getId())
+                .userId(task.getUserId())
+                .versionId(version.getId())
+                .baselineTaskId(baselineTaskId)
+                .middlewareType(template.getMiddlewareType())
+                .config(readJsonObject(version.getRunParamsJson()))
+                .files(readFiles(loadFilesJson(version)))
+                .codeDiff(codeDiff)
+                .metrics(toMetricMap(result))
+                .baselineMetrics(baselineMetrics)
+                .logs(readLogs(result.getMetricsJson()))
+                .build();
+    }
+
+    @Override
+    public List<SimilarExperimentResponse> findSimilarExperiments(Long taskId, int limit) {
+        if (limit < 1 || limit > 10) {
+            throw new ApiException(ErrorCode.PARAM_INVALID, "相似实验返回数量必须在 1 到 10 之间");
+        }
+
+        // 1. 当前实验是相似度计算基准，必须具备任务、版本、模板和指标。
+        ExperimentTask currentTask = experimentTaskMapper.selectById(taskId);
+        if (currentTask == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "实验任务不存在");
+        }
+        ExperimentVersion currentVersion = experimentVersionMapper.selectById(currentTask.getVersionId());
+        if (currentVersion == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "实验版本不存在");
+        }
+        ExperimentTemplate currentTemplate = experimentTemplateMapper.selectById(currentVersion.getTemplateId());
+        if (currentTemplate == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "实验模板不存在");
+        }
+        ExperimentResult currentResult = findResult(taskId);
+
+        // 2. 先取最近 200 个历史结果，再批量加载任务、版本和模板，避免逐条查询。
+        List<ExperimentResult> candidateResults = experimentResultMapper.selectList(
+                new LambdaQueryWrapper<ExperimentResult>()
+                        .ne(ExperimentResult::getTaskId, taskId)
+                        .orderByDesc(ExperimentResult::getCreatedAt)
+                        .last("LIMIT 200"));
+        if (candidateResults.isEmpty()) {
+            return List.of();
+        }
+
+        List<ExperimentTask> candidateTasks = experimentTaskMapper.selectBatchIds(
+                candidateResults.stream().map(ExperimentResult::getTaskId).toList());
+        Map<Long, ExperimentTask> taskMap = new HashMap<>();
+        for (ExperimentTask candidateTask : candidateTasks) {
+            taskMap.put(candidateTask.getId(), candidateTask);
+        }
+
+        List<Long> versionIds = candidateTasks.stream()
+                .filter(task -> "SUCCESS".equals(task.getStatus()))
+                .map(ExperimentTask::getVersionId)
+                .distinct()
+                .toList();
+        if (versionIds.isEmpty()) {
+            return List.of();
+        }
+        List<ExperimentVersion> candidateVersions = experimentVersionMapper.selectBatchIds(versionIds);
+        Map<Long, ExperimentVersion> versionMap = new HashMap<>();
+        for (ExperimentVersion candidateVersion : candidateVersions) {
+            versionMap.put(candidateVersion.getId(), candidateVersion);
+        }
+
+        List<Long> templateIds = candidateVersions.stream()
+                .map(ExperimentVersion::getTemplateId)
+                .distinct()
+                .toList();
+        List<ExperimentTemplate> candidateTemplates = experimentTemplateMapper.selectBatchIds(templateIds);
+        Map<Long, ExperimentTemplate> templateMap = new HashMap<>();
+        for (ExperimentTemplate candidateTemplate : candidateTemplates) {
+            templateMap.put(candidateTemplate.getId(), candidateTemplate);
+        }
+
+        // 3. 只比较相同中间件；指标距离越小越相似，同场景额外增加少量权重。
+        List<SimilarExperimentResponse> matches = new ArrayList<>();
+        for (ExperimentResult candidateResult : candidateResults) {
+            ExperimentTask candidateTask = taskMap.get(candidateResult.getTaskId());
+            if (candidateTask == null || !"SUCCESS".equals(candidateTask.getStatus())) {
+                continue;
+            }
+            ExperimentVersion candidateVersion = versionMap.get(candidateTask.getVersionId());
+            if (candidateVersion == null) {
+                continue;
+            }
+            ExperimentTemplate candidateTemplate = templateMap.get(candidateVersion.getTemplateId());
+            if (candidateTemplate == null
+                    || !currentTemplate.getMiddlewareType().equalsIgnoreCase(candidateTemplate.getMiddlewareType())) {
+                continue;
+            }
+
+            double distance = metricDistance(currentResult.getQps(), candidateResult.getQps(), 1.0) * 0.30
+                    + metricDistance(currentResult.getP95Ms(), candidateResult.getP95Ms(), 1.0) * 0.30
+                    + metricDistance(currentResult.getErrorRate(), candidateResult.getErrorRate(), 0.01) * 0.15
+                    + metricDistance(currentResult.getAvgCpu(), candidateResult.getAvgCpu(), 0.10) * 0.15
+                    + metricDistance(currentResult.getPeakMemoryMb(), candidateResult.getPeakMemoryMb(), 64.0) * 0.10;
+            double similarity = Math.max(0.0, 1.0 - Math.min(distance, 1.0));
+            if (currentTemplate.getScenario() != null
+                    && currentTemplate.getScenario().equalsIgnoreCase(candidateTemplate.getScenario())) {
+                similarity = Math.min(1.0, similarity + 0.05);
+            }
+
+            matches.add(SimilarExperimentResponse.builder()
+                    .taskId(candidateTask.getId())
+                    .versionId(candidateVersion.getId())
+                    .middlewareType(candidateTemplate.getMiddlewareType())
+                    .scenario(candidateTemplate.getScenario())
+                    .similarityScore(Math.round(similarity * 10000) / 10000.0)
+                    .metrics(toMetricMap(candidateResult))
+                    .build());
+        }
+
+        matches.sort((left, right) -> right.getSimilarityScore().compareTo(left.getSimilarityScore()));
+        return matches.stream().limit(limit).toList();
+    }
+
     // ==================== 私有辅助 ====================
+
+    private double metricDistance(Number current, Number candidate, double minimumScale) {
+        if (current == null || candidate == null) {
+            return 1.0;
+        }
+        double scale = Math.max(Math.abs(current.doubleValue()), minimumScale);
+        return Math.min(Math.abs(candidate.doubleValue() - current.doubleValue()) / scale, 1.0);
+    }
+
+    private ExperimentResult findResult(Long taskId) {
+        ExperimentResult result = experimentResultMapper.selectOne(
+                new LambdaQueryWrapper<ExperimentResult>()
+                        .eq(ExperimentResult::getTaskId, taskId));
+        if (result == null) {
+            throw new ApiException(409, "实验任务尚未生成指标结果");
+        }
+        return result;
+    }
+
+    private Map<String, Object> toMetricMap(ExperimentResult result) {
+        Map<String, Object> metrics = new LinkedHashMap<>(readJsonObject(result.getMetricsJson()));
+        metrics.put("qps", result.getQps());
+        metrics.put("p95Ms", result.getP95Ms());
+        metrics.put("errorRate", result.getErrorRate());
+        metrics.put("avgCpu", result.getAvgCpu());
+        metrics.put("peakMemoryMb", result.getPeakMemoryMb());
+        return metrics;
+    }
+
+    private Map<String, Object> readJsonObject(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {
+            });
+        } catch (JsonProcessingException e) {
+            throw new ApiException(500, "实验 JSON 数据格式错误");
+        }
+    }
+
+    private List<Map<String, Object>> readFiles(String filesJson) {
+        if (filesJson == null || filesJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(filesJson, new TypeReference<List<Map<String, Object>>>() {
+            });
+        } catch (JsonProcessingException e) {
+            throw new ApiException(500, "实验版本文件格式错误");
+        }
+    }
+
+    private List<String> readLogs(String metricsJson) {
+        Object logs = readJsonObject(metricsJson).get("logs");
+        if (!(logs instanceof List<?> values)) {
+            return List.of();
+        }
+        return values.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .limit(200)
+                .toList();
+    }
 
     private MembershipInfo queryMembership(Long userId) {
         try {

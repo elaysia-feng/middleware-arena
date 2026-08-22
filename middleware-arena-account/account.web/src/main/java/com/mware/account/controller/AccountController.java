@@ -51,15 +51,15 @@ public class AccountController {
      */
     @Operation(summary = "扣减余额（内部服务间调用）")
     @PostMapping("/deduct")
-    public ApiResponse<Void> deductBalance(@RequestParam Long userId,
-                                           @RequestParam Long amount) {
+    public ApiResponse<Void> deductBalance(@RequestParam("userId") Long userId,
+                                           @RequestParam("amount") Long amount) {
         accountService.deductBalance(userId, amount);
         return ApiResponse.ok();
     }
 
     @Operation(summary = "查询余额")
     @GetMapping("/balance/{userId}")
-    public ApiResponse<AccountBalanceResponse> getBalance(@PathVariable Long userId) {
+    public ApiResponse<AccountBalanceResponse> getBalance(@PathVariable("userId") Long userId) {
         // 面向用户：只允许查自己的余额，防 IDOR
         Long currentUserId = UserContext.getUserId();
         if (currentUserId == null || !currentUserId.equals(userId)) {

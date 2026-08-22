@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  共享 logback 配置（base.web 提供，所有 service 继承）
+  · 控制台 + 文件双输出
+  · 文件路径：./logs/${spring.application.name}.log（相对 cwd，即服务启动目录）
+  · 启动后会自动创建 <service>.log / .log.yyyy-MM-dd.gz
+  · 滚动策略：按天，最多保留 30 天、累计 1GB
+-->
+<configuration scan="true" scanPeriod="30 seconds">
+
+    <!-- 从 Spring Environment 读取服务名，找不到时用 'application' 兜底 -->
+    <springProperty scope="context" name="APP_NAME"
+                    source="spring.application.name" defaultValue="application"/>
+
+    <property name="LOG_PATH" value="${LOG_PATH:-./logs}"/>
+
+    <!-- 控制台输出（开发时主要看这个） -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- 文件输出（按天滚动 + 压缩 + 保留策略） -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/${APP_NAME}.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- 每天一个归档，gz 压缩 -->
+            <fileNamePattern>${LOG_PATH}/archive/${APP_NAME}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <!-- 单文件 100MB -->
+            <maxFileSize>100MB</maxFileSize>
+            <!-- 保留 30 天 或 累计 1GB -->
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} [%X{traceId:-},%X{userId:-}] - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- 默认 INFO；想看 SQL 调成 DEBUG；想压制第三方噪音调 WARN -->
+    <logger name="com.mware" level="INFO"/>
+    <logger name="org.springframework" level="INFO"/>
+    <logger name="org.apache" level="WARN"/>
+    <logger name="com.alibaba.nacos" level="WARN"/>
+
+    <!-- MyBatis SQL 日志（默认关闭，需要时改成 DEBUG） -->
+    <logger name="com.mware.community.mapper" level="INFO"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+</configuration>

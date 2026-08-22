@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     agent_http_prefix: str = "/agent"
     # 自动优化最多循环次数，防止 Agent 一直“修改 -> 重跑 -> 再修改”。
     agent_max_analysis_iterations: int = 3
+    # 只有 Judge 达到该置信度且状态为 CONFIRMED，才允许生成候选 Patch。
+    agent_patch_confidence_threshold: float = 0.75
 
     # ------------------------------------------------------------------
     # RabbitMQ
@@ -84,14 +86,14 @@ class Settings(BaseSettings):
     internal_http_timeout_seconds: float = 10.0
 
     # ------------------------------------------------------------------
-    # LLM（OpenAI-compatible API）
+    # LLM（MiniMax Anthropic-compatible API）
     # ------------------------------------------------------------------
-    # DeepSeek、MiniMax 等兼容 OpenAI Chat API 的服务可以通过 base_url 接入。
-    openai_api_base: str = "https://api.deepseek.com"
+    # MiniMax 官方推荐的 Anthropic 兼容接口，支持思考块和 Prompt Cache。
+    anthropic_base_url: str = "https://api.minimaxi.com/anthropic"
     # 不在仓库提交真实 Key；本地放 .env.local。
-    openai_api_key: str = ""
+    anthropic_api_key: str = ""
     # 默认模型名；后续也可以按节点/Prompt 选择不同模型。
-    openai_model: str = "deepseek-v4-flash"
+    anthropic_model: str = "MiniMax-M3[1m]"
 
     # ------------------------------------------------------------------
     # Langfuse

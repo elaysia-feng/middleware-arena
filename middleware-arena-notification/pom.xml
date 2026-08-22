@@ -21,6 +21,7 @@
         <module>notification.domain</module>
         <module>notification.dto</module>
         <module>notification.mapper</module>
+        <module>notification.test</module>
     </modules>
 
     <dependencyManagement>

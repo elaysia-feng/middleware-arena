@@ -1,0 +1,33 @@
+# 宿主参与方仍需完成数据源与 Seata AT 接入，因此模板保持 DRAFT，不能误标为可直接运行。
+name: Seata AT 下单一致性
+middlewareType: SEATA
+scenario: ORDER_STORAGE_ACCOUNT_AT
+description: 对比普通 Feign 链路与 Seata AT 全局事务。
+tags: 分布式事务,AT,undo_log,故障注入
+status: DRAFT
+runParams:
+  concurrencyLadder: [5, 20, 50]
+  duration: 30s
+  globalTransactionTimeout: 60s
+  balanceFailureRate: 0.2
+  stockFailureRate: 0.1
+  accountTimeoutRate: 0.05
+files:
+  - path: middleware-arena-order/order.biz/src/main/java/com/mware/order/biz/impl/OrderServiceImpl.java
+    language: java
+    editable: true
+  - path: middleware-arena-storage/storage.biz/src/main/java/com/mware/storage/biz/impl/StorageServiceImpl.java
+    language: java
+    editable: true
+  - path: middleware-arena-account/account.biz/src/main/java/com/mware/account/biz/impl/AccountServiceImpl.java
+    language: java
+    editable: true
+  - path: middleware-arena-order/order.web/src/main/resources/application.yml
+    language: yaml
+    editable: true
+  - path: middleware-arena-storage/storage.web/src/main/resources/application.yml
+    language: yaml
+    editable: true
+  - path: middleware-arena-account/account.web/src/main/resources/application.yml
+    language: yaml
+    editable: true

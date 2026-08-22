@@ -228,20 +228,38 @@ metricsJson
 
 ## 8. LangGraph 主流程
 
-```text
-load_context
-  -> analyze_metrics
-  -> middleware_router
-  -> redis/rabbitmq/seata/elasticsearch subgraph
-  -> analyze_code
-  -> generate_hypothesis
-  -> judge_bottleneck
-  -> generate_patch
-  -> human approval
-  -> create new version / rerun
-  -> compare result
-  -> generate_report
+```mermaid
+flowchart TD
+    Start([START]) --> Load[load_context]
+    Load --> Metrics[analyze_metrics]
+    Load --> Logs[analyze_logs]
+    Load --> Code[analyze_code]
+    Load --> Similar[retrieve_similar]
+    Metrics --> Merge[merge_evidence]
+    Logs --> Merge
+    Code --> Merge
+    Similar --> Merge
+    Merge --> Router{middleware_router}
+    Router --> Redis[Redis SubGraph]
+    Router --> RabbitMQ[RabbitMQ SubGraph]
+    Router --> Seata[Seata SubGraph]
+    Router --> ES[Elasticsearch SubGraph]
+    Router --> Generic[Generic SubGraph]
+    Redis --> Hypothesis[generate_hypothesis]
+    RabbitMQ --> Hypothesis
+    Seata --> Hypothesis
+    ES --> Hypothesis
+    Generic --> Hypothesis
+    Hypothesis --> Judge[judge_bottleneck]
+    Judge --> Confidence{confidence_router}
+    Confidence -->|confirmed| Patch[generate_patch]
+    Confidence -->|uncertain| Report[generate_report]
+    Patch --> Report
+    Report --> End([END])
 ```
+
+候选 Patch 后的人工审核、创建新版本、重跑和前后对比是独立写流程。主分析图不会
+绕过 Human-in-the-loop 自动修改实验代码。
 
 `AnalysisState` 仅用于图执行过程，不直接把 Request / Message 当 State。
 
@@ -271,7 +289,7 @@ generate_patch / generate_report
 
 ## TODO
 
-- [ ] 实现 `services.analysis.run_analysis`。
+- [x] 实现 `services.analysis.run_analysis`。
 - [ ] 实现 Experiment Internal API 的 task/result/version/diff/logs 具体接口。
 - [ ] 实现 Java AgentAnalysisStatusConsumer 状态机与幂等落库。
 - [ ] 为 Evidence/Hypothesis/Patch 增加结构化 Pydantic 模型。

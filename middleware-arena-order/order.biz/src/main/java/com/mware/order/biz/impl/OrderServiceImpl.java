@@ -1,6 +1,7 @@
 package com.mware.order.biz.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.mware.common.web.ApiException;
 import com.mware.common.web.ApiResponse;
@@ -11,11 +12,11 @@ import com.mware.order.domain.Order;
 import com.mware.order.domain.OrderStatus;
 import com.mware.order.dto.request.CreateOrderRequest;
 import com.mware.order.dto.response.OrderResponse;
+import com.mware.order.dto.response.ProductSnapshotResponse;
 import com.mware.order.feign.AccountClient;
 import com.mware.order.feign.ProductClient;
 import com.mware.order.feign.StorageClient;
 import com.mware.order.mapper.OrderMapper;
-import com.mware.product.domain.Product;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -57,9 +58,13 @@ public class OrderServiceImpl implements OrderService {
     private final Cache<Long, Order> orderCache;
 
     @Override
-    @GlobalTransactional
+    @GlobalTransactional(name = "create-order", rollbackFor = Exception.class)
     public OrderResponse createOrder(CreateOrderRequest request) {
-        // 0. requestId 兜底
+        if (request == null || request.getProductId() == null
+                || request.getQuantity() == null || request.getQuantity() <= 0) {
+            throw new ApiException(ErrorCode.PARAM_INVALID);
+        }
+
         String requestId = request.getRequestId();
         if (!StringUtils.hasText(requestId)) {
             requestId = UUID.randomUUID().toString().replace("-", "");
@@ -70,29 +75,21 @@ public class OrderServiceImpl implements OrderService {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
 
-        // 1. 幂等请求 然后 再组装 Order（userId/productId/quantity/amount/status=CREATED）
         Boolean first = redisTemplate.opsForValue().setIfAbsent(orderKeyPrefix + requestId, uid, Duration.ofMinutes(5));
-        if (!first) {
-            // 已提交过：Redis SETNX 幂等 key 已存在，同一 requestId 直接拒绝。
-            // 注：request_id 已从 Order 表移除（DB 兜底查询是未来实验，见 sql/init.sql 注释），
-            // 现在只靠 Redis key 防重，TTL 5 分钟。
-            // TODO 完善逻辑：
-            // 1. 返回"处理中"状态码（如 202 / 自定义码）让前端稍后重查，而非直接 PARAM_INVALID
-            // 2. 可提供轮询接口（按 requestId 查订单）等待落库完成
-            // 3. 注意幂等 key TTL（5 分钟）与订单事务提交的竞态：TTL 过短 → key 先失效、订单后落库 → 重试会重复下单
-            throw new ApiException(ErrorCode.PARAM_INVALID);
-        }
-        // 如果下单数量为0 则为系统错误
-        if (request.getQuantity() == null || request.getQuantity() <= 0) {
-            throw new ApiException(ErrorCode.PARAM_INVALID);
+        if (!Boolean.TRUE.equals(first)) {
+            Order existing = orderMapper.selectOne(new LambdaQueryWrapper<Order>()
+                    .eq(Order::getUserId, uid)
+                    .eq(Order::getRequestId, requestId));
+            if (existing != null) {
+                return toResponse(existing);
+            }
+            throw new ApiException(ErrorCode.PARAM_INVALID, "订单正在处理中，请勿重复提交");
         }
 
         try {
-            Product product = productClient.getProduct(request.getProductId()).getData();
-            // 商品不存在就直接报错
-            if (product == null) {
-                throw new ApiException(ErrorCode.PRODUCT_NOT_FOUND);
-            }
+            ApiResponse<ProductSnapshotResponse> productResult = productClient.getProduct(request.getProductId());
+            checkRemoteResult(productResult);
+            ProductSnapshotResponse product = productResult.getData();
 
             // 金额统一 Long（单位：分），避免浮点误差：单价分 × 数量
             Long amount = product.getPrice() * request.getQuantity();
@@ -102,6 +99,7 @@ public class OrderServiceImpl implements OrderService {
                     .productId(request.getProductId())
                     .quantity(request.getQuantity())
                     .orderNo(generateOrderNo())
+                    .requestId(requestId)
                     .unitPrice(product.getPrice())
                     .amount(amount)
                     .status(OrderStatus.CREATE.getStatus())
@@ -113,16 +111,15 @@ public class OrderServiceImpl implements OrderService {
 
             // 3. storageClient.deductStock(productId, quantity) 扣库存，库存不足抛
             // ApiException(STOCK_NOT_ENOUGH)
-            storageClient.deductStock(request.getProductId(), request.getQuantity());
+            checkRemoteResult(storageClient.deductStock(request.getProductId(), request.getQuantity()));
 
             // 4. accountClient.deductBalance(userId, amount) 扣余额，余额不足抛
             // ApiException(BALANCE_NOT_ENOUGH)
-            accountClient.deductBalance(uid, amount);
+            checkRemoteResult(accountClient.deductBalance(uid, amount));
 
             return toResponse(order);
         } catch (Exception e) {
-            // 下单失败：删除幂等 key，允许前端用同一 requestId 重试；再抛出让 Seata 回滚, TODO
-            // 可能redis缓存删掉了，但是我的seata还没删减完
+            // Redis 不在 Seata 事务内，失败时主动释放短期幂等键；MySQL 三库由 Seata 回滚。
             redisTemplate.delete(orderKeyPrefix + requestId);
             throw e;
         }
@@ -182,6 +179,16 @@ public class OrderServiceImpl implements OrderService {
     // 生成订单号
     private String generateOrderNo() {
         return IdWorker.getIdStr();
+    }
+
+    /** Feign 的业务异常仍以 HTTP 200 返回，必须检查统一响应码才能触发全局回滚。 */
+    private void checkRemoteResult(ApiResponse<?> response) {
+        if (response == null) {
+            throw new ApiException(ErrorCode.INTERNAL_ERROR, "下游服务无响应");
+        }
+        if (response.getCode() != 200) {
+            throw new ApiException(response.getCode(), response.getMessage());
+        }
     }
 
     /** domain Order → 对外 OrderResponse 映射（service 层转换，controller 保持薄层） */

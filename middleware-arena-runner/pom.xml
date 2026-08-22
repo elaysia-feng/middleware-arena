@@ -19,6 +19,7 @@
         <module>runner.web</module>
         <module>runner.biz</module>
         <module>runner.dto</module>
+        <module>runner.test</module>
     </modules>
 
     <dependencyManagement>

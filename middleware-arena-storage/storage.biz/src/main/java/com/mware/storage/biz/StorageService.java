@@ -5,7 +5,7 @@ import com.mware.storage.domain.Stock;
 /**
  * 库存业务接口。
  * <p>
- * 方法签名已定，具体实现留待接入 storage.mapper / Seata AT 后补齐。
+ * 扣库存接口作为 Seata AT 分支事务参与下单链路。
  */
 public interface StorageService {
 
