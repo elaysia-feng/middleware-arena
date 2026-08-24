@@ -54,7 +54,7 @@ public class OrderServiceImpl implements OrderService {
     private final StorageClient storageClient;
     private final AccountClient accountClient;
     private final ProductClient productClient;
-    private final RedisTemplate redisTemplate;
+    private final RedisTemplate<String, Object> redisTemplate;
     private final Cache<Long, Order> orderCache;
 
     @Override

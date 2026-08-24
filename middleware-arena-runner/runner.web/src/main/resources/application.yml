@@ -10,21 +10,21 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:192.168.0.192:8848}
+        server-addr: ${NACOS_ADDR:192.168.1.177:8848}
     sentinel:
       eager: true
       log:
         dir: ${SENTINEL_LOG_DIR:logs/sentinel/runner}
         switch-pid: true
       transport:
-        dashboard: ${SENTINEL_DASHBOARD:192.168.0.192:8858}
-        client-ip: ${SENTINEL_CLIENT_IP:192.168.0.197}
+        dashboard: ${SENTINEL_DASHBOARD:192.168.1.177:8858}
+        client-ip: ${SENTINEL_CLIENT_IP:192.168.1.61}
         port: ${SENTINEL_PORT:8723}
 
   # Redis：任务实例状态缓存（键名见 runner.biz 的 RunnerRedisKeys）
   data:
     redis:
-      host: ${REDIS_HOST:192.168.0.192}
+      host: ${REDIS_HOST:192.168.1.177}
       port: ${REDIS_PORT:6379}
 
   # ============================================================
@@ -35,7 +35,7 @@ spring:
   # 消费端：manual ack（@RabbitListener ackMode=MANUAL）+ retry（重试后仍失败进 DLQ）。
   # ============================================================
   rabbitmq:
-    host: ${RABBIT_HOST:192.168.0.192}
+    host: ${RABBIT_HOST:192.168.1.177}
     port: 5672
     username: ${RABBIT_USER:guest}
     password: ${RABBIT_PASSWORD:guest}
@@ -75,8 +75,9 @@ ma:
     max-files-bytes: ${OSS_MAX_FILES_BYTES:10485760}
   runner:
     docker:
-      binary: docker
-      host: ${DOCKER_HOST:unix:///var/run/docker.sock}
+      # Docker daemon 位于远程 Windows 主机；认证由本机 SSH 配置/密钥负责，不写入密码。
+      binary: ${DOCKER_BINARY:C:/Program Files/Docker/Docker/resources/bin/docker.exe}
+      host: ${DOCKER_HOST:ssh://Windows10@192.168.1.177}
       command-timeout-seconds: 120
       container-prefix: ma-task
     # 平台全局资源上限（防大量普通用户把机器吃爆；真正建容器的最后防线是 --memory/--cpus）
@@ -117,7 +118,7 @@ ma:
       baseline-suffix: ":v1"
     # k6 压测档位（第一版从轻；VIP 再开放 50/100/200 VU、更长 duration）
     k6:
-      work-dir: /tmp/ma-k6
+      work-dir: ${RUNNER_K6_WORK_DIR:F:/myInterestingProgram/Middleware Arena/.runner/k6}
       smoke-vus: 5
       smoke-seconds: 10
       warmup-vus: 10
@@ -126,11 +127,11 @@ ma:
       formal-seconds: 30
     # 用户 SUT 的构建环境（离线编译，对应 CLAUDE.md 约束）
     build:
-      work-dir: /var/lib/ma-runner/work
-      template-dir: /var/lib/ma-runner/templates
-      maven: /usr/local/maven/bin/mvn
-      jdk-home: /usr/local/jdk
-      local-repo: /usr/local/maven/repo
+      work-dir: ${RUNNER_WORK_DIR:F:/myInterestingProgram/Middleware Arena/.runner/work}
+      template-dir: ${RUNNER_TEMPLATE_DIR:F:/myInterestingProgram/Middleware Arena/middleware-arena-templates}
+      maven: ${RUNNER_MAVEN:E:/develop/apache-maven-3.9.12-bin/apache-maven-3.9.12/bin/mvn.cmd}
+      jdk-home: ${RUNNER_JDK_HOME:E:/develop/java/jdk-21}
+      local-repo: ${RUNNER_MAVEN_REPO:F:/develop/maven-repository}
       offline: true
     # 阶段进度通过 RabbitMQ 回传 experiment-service。
     progress:

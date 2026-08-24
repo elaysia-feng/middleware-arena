@@ -217,9 +217,9 @@ public class RunnerServiceImpl implements RunnerService {
                         try {
                             cleanup(message);
                         } finally {
-                            resourceScheduler.release(message);
+                            releaseResourcesSafely(message);
                             runningTaskManager.remove(String.valueOf(taskId));
-                            stringRedisTemplate.delete(RunnerRedisKeys.instanceKey(taskId));
+                            deleteInstanceKeySafely(taskId);
                         }
                     }
                     // cleanup 也成功后才回传 SUCCESS，避免任务成功但容器仍残留。
@@ -233,7 +233,7 @@ public class RunnerServiceImpl implements RunnerService {
         } catch (RuntimeException e) {
             // 线程池拒绝任务时不会进入异步 finally，这里必须立即归还资源和实例登记。
             resourceScheduler.release(message);
-            stringRedisTemplate.delete(RunnerRedisKeys.instanceKey(taskId));
+            deleteInstanceKeySafely(taskId);
             throw e;
         }
 
@@ -270,6 +270,27 @@ public class RunnerServiceImpl implements RunnerService {
         stringRedisTemplate.delete(RunnerRedisKeys.instanceKey(taskId));
 
         return cancelled;
+    }
+
+    private void releaseResourcesSafely(RunnerTaskMessage message) {
+        try {
+            resourceScheduler.release(message);
+        } catch (RuntimeException e) {
+            log.error("任务资源释放失败 taskId={}，不能覆盖原始任务异常", message.getTaskId(), e);
+        }
+    }
+
+    private void deleteInstanceKeySafely(Long taskId) {
+        boolean interrupted = Thread.interrupted();
+        try {
+            stringRedisTemplate.delete(RunnerRedisKeys.instanceKey(taskId));
+        } catch (RuntimeException e) {
+            log.warn("清理 Runner 实例登记失败 taskId={}，稍后可由过期机制处理", taskId, e);
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     private void logStage(RunnerTaskMessage message, String stage, String detail) {

@@ -1,0 +1,529 @@
+/* 来自 middleware_arena_front_demo 的视觉设计，适配 Vue + Element Plus 项目
+   去除 body reset / font 字体（用 Element Plus 默认）
+   保留所有 CSS 变量、卡片、侧栏、metric 大数字卡等 */
+:root {
+  --bg: #f5f7fb;
+  --panel: #fff;
+  --line: #e7ebf2;
+  --text: #182033;
+  --muted: #7b879d;
+  --primary: #4f6df5;
+  --primary2: #7b61ff;
+  --green: #16a36f;
+  --orange: #f59e42;
+  --red: #e75c5c;
+  --nav: #111d32;
+  --nav-hover: #1b2b47;
+  --shadow: 0 10px 28px rgba(27, 42, 74, 0.08);
+}
+
+.app {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
+/* ===== 侧栏 ===== */
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  background: linear-gradient(180deg, #111d32, #0b1424);
+  padding: 18px 14px;
+  color: #dbe5f5;
+  display: flex;
+  flex-direction: column;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 10px 22px;
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+}
+.brand .logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #4ec4ff, #7a5cff);
+  display: grid;
+  place-items: center;
+}
+.nav-title {
+  padding: 10px 12px 6px;
+  font-size: 11px;
+  color: #71819c;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.nav {
+  display: grid;
+  gap: 5px;
+}
+.nav a {
+  padding: 11px 12px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: #cad6e8;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.15s, color 0.15s;
+}
+.nav a:hover,
+.nav a.active {
+  background: var(--nav-hover);
+  color: #fff;
+}
+.nav a.active {
+  box-shadow: inset 3px 0 0 #6d7cff;
+}
+.side-bottom {
+  margin-top: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(145deg, #1b3151, #182844);
+  padding: 15px;
+  border-radius: 15px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* ===== 主区 ===== */
+.main {
+  min-width: 0;
+}
+.topbar {
+  height: 70px;
+  background: rgba(255, 255, 255, 0.94);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.search {
+  width: min(460px, 46vw);
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0 14px;
+  background: #fafbfe;
+  font-size: 14px;
+  outline: none;
+}
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffc76a, #ff7a8a);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.page {
+  padding: 24px;
+}
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.page-head h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+}
+.muted {
+  color: var(--muted);
+}
+
+/* ===== 通用 ===== */
+.btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  display: inline-block;
+  font-size: 14px;
+}
+.btn.primary {
+  background: linear-gradient(135deg, var(--primary), var(--primary2));
+  border-color: transparent;
+  color: #fff;
+}
+.btn.soft {
+  background: #eef2ff;
+  color: #4a5ac7;
+  border-color: #e4e8ff;
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+.panel {
+  padding: 18px;
+}
+.panel h3 {
+  margin: 0 0 14px;
+  font-size: 17px;
+}
+.grid {
+  display: grid;
+  gap: 16px;
+}
+.cols-2 {
+  grid-template-columns: 1.35fr 1fr;
+}
+.cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.cols-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* ===== Hero (实验总览用) ===== */
+.hero {
+  padding: 20px;
+}
+.hero-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+.hero-title {
+  display: flex;
+  gap: 14px;
+}
+.scene-icon {
+  width: 76px;
+  height: 76px;
+  border-radius: 19px;
+  background: linear-gradient(145deg, #204d85, #4f6df5);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 32px;
+  flex-shrink: 0;
+}
+.tag {
+  display: inline-block;
+  font-size: 12px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #f0f3ff;
+  color: #4f5fb6;
+  border: 1px solid #e0e5ff;
+  margin: 3px;
+}
+.resource-row,
+.metric-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+.resource {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fbfcff;
+}
+.resource span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+.metric {
+  padding: 17px;
+}
+.metric small {
+  display: block;
+  color: var(--muted);
+}
+.metric strong {
+  display: block;
+  font-size: 27px;
+  margin-top: 7px;
+}
+.blue {
+  color: var(--primary);
+}
+.green {
+  color: var(--green);
+}
+.purple {
+  color: var(--primary2);
+}
+.orange {
+  color: var(--orange);
+}
+.red {
+  color: var(--red);
+}
+.chart {
+  height: 250px;
+  border-radius: 14px;
+  background: linear-gradient(#edf1f6 1px, transparent 1px),
+    linear-gradient(90deg, #edf1f6 1px, transparent 1px);
+  background-size: 100% 25%, 12.5% 100%;
+  overflow: hidden;
+}
+.chart svg {
+  width: 100%;
+  height: 100%;
+}
+.evidence {
+  display: grid;
+  gap: 10px;
+}
+.evidence-item {
+  padding: 12px;
+  border: 1px solid #e6e9f0;
+  background: #fff;
+  border-radius: 11px;
+}
+.scene-card {
+  padding: 18px;
+}
+.scene-card h3 {
+  margin: 14px 0 8px;
+}
+.scene-card p {
+  color: #5f6b7f;
+  line-height: 1.65;
+}
+.code-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 620px;
+  overflow: hidden;
+  border-radius: 16px;
+}
+.resize-handle {
+  position: relative;
+  z-index: 2;
+  background: #151f2f;
+  cursor: col-resize;
+}
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  inset: 0 2px;
+  background: transparent;
+  transition: background 0.15s;
+}
+.resize-handle:hover::after {
+  background: #5b8cff;
+}
+.file-tree {
+  background: #151f2f;
+  color: #d9e4f2;
+  padding: 16px;
+}
+.file-tree h3 {
+  margin: 0 0 14px;
+  color: #fff;
+}
+.file {
+  padding: 7px 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.file.active {
+  background: #2a3850;
+  color: #fff;
+}
+.editor {
+  background: #0f1724;
+  color: #dbe6f5;
+  display: flex;
+  flex-direction: column;
+}
+.editor-top {
+  height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid #263449;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.code {
+  padding: 20px;
+  margin: 0;
+  white-space: pre;
+  overflow: auto;
+  font-family: Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  flex: 1;
+}
+.kw {
+  color: #c792ea;
+}
+.type {
+  color: #82aaff;
+}
+.str {
+  color: #c3e88d;
+}
+.fn {
+  color: #89ddff;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.field label {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 7px;
+}
+.field input,
+.field select {
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.progress {
+  height: 10px;
+  border-radius: 999px;
+  background: #edf1f7;
+  overflow: hidden;
+}
+.progress > div {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--primary2));
+  transition: width 0.35s;
+}
+
+/* ===== Post (社区) ===== */
+.post {
+  padding: 18px;
+}
+.post h3 {
+  margin: 12px 0 8px;
+}
+.post p {
+  color: #59657a;
+  line-height: 1.7;
+}
+.post-actions {
+  display: flex;
+  gap: 16px;
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 12px;
+  color: #68758b;
+}
+
+/* ===== 表格 ===== */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.table th,
+.table td {
+  padding: 13px 10px;
+  text-align: left;
+  border-bottom: 1px solid #edf0f5;
+}
+.table th {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ===== 徽章 ===== */
+.badge {
+  display: inline-block;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.ok {
+  background: #eaf9f3;
+  color: #177c59;
+}
+.wait {
+  background: #fff4dc;
+  color: #976814;
+}
+.run {
+  background: #eaf0ff;
+  color: #3b58bd;
+}
+.fail {
+  background: #fff0f0;
+  color: #bc4545;
+}
+
+@media (max-width: 1100px) {
+  .cols-2,
+  .cols-3,
+  .cols-4 {
+    grid-template-columns: 1fr;
+  }
+  .resource-row,
+  .metric-row {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 760px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    height: auto;
+    position: relative;
+  }
+  .nav {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .page {
+    padding: 14px;
+  }
+  .resource-row,
+  .metric-row,
+  .form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .code-shell {
+    grid-template-columns: 1fr !important;
+  }
+  .file-tree {
+    display: none;
+  }
+  .resize-handle {
+    display: none;
+  }
+  .topbar {
+    padding: 0 12px;
+  }
+}

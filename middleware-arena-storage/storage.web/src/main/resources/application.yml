@@ -10,15 +10,15 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:192.168.0.192:8848}
+        server-addr: ${NACOS_ADDR:192.168.1.177:8848}
     sentinel:
       eager: true
       log:
         dir: ${SENTINEL_LOG_DIR:logs/sentinel/storage}
         switch-pid: true
       transport:
-        dashboard: ${SENTINEL_DASHBOARD:192.168.0.192:8858}
-        client-ip: ${SENTINEL_CLIENT_IP:192.168.0.197}
+        dashboard: ${SENTINEL_DASHBOARD:192.168.1.177:8858}
+        client-ip: ${SENTINEL_CLIENT_IP:192.168.1.61}
         port: ${SENTINEL_PORT:8726}
   datasource:
     url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/ma_storage?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
@@ -34,7 +34,7 @@ seata:
     vgroup-mapping:
       middleware_arena_tx_group: default
     grouplist:
-      default: ${SEATA_ADDR:192.168.0.192:8091}
+      default: ${SEATA_ADDR:192.168.1.177:8091}
 
 ma:
   internal-auth:

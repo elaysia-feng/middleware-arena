@@ -37,6 +37,8 @@ import com.mware.experiment.mq.producer.RunnerCreaetTaskProducer;
 import com.mware.experiment.mq.producer.RunnerCancelTaskProducer;
 import com.mware.experiment.biz.storage.OssVersionFileStorage;
 
+import org.yaml.snakeyaml.Yaml;
+
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.stereotype.Service;
@@ -44,6 +46,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -87,6 +92,9 @@ public class ExperimentServiceImpl implements ExperimentService {
     @Value("${ma.internal-token:middleware-arena-internal-token}")
     private String internalToken;
 
+    @Value("${ma.template-assets-dir:../middleware-arena-templates}")
+    private String templateAssetsDir;
+
     /** JSON 序列化：base.web → spring-boot-starter-web 传递引入 jackson-databind */
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -129,6 +137,55 @@ public class ExperimentServiceImpl implements ExperimentService {
         experimentTemplateMapper.updateById(template);
 
         return toTemplateResponse(template, version);
+    }
+
+    @Override
+    public TemplateResponse createBuiltinTemplate(String builtinKey, Long userId) {
+        String directory = switch (builtinKey) {
+            case "redis", "rabbitmq", "seata", "elasticsearch", "community-interaction" -> builtinKey;
+            default -> throw new ApiException(ErrorCode.PARAM_INVALID);
+        };
+        Path assetsRoot = Path.of(templateAssetsDir);
+        if (!Files.exists(assetsRoot)) {
+            assetsRoot = Path.of("middleware-arena-templates");
+        }
+        assetsRoot = assetsRoot.toAbsolutePath().normalize();
+        Path workspaceRoot = assetsRoot.getParent();
+        Path yamlPath = assetsRoot.resolve(directory).resolve("template.yml");
+
+        try (InputStream input = Files.newInputStream(yamlPath)) {
+            Map<String, Object> template = new Yaml().load(input);
+            List<TemplateFileRequest> files = new ArrayList<>();
+            List<Map<String, Object>> fileConfigs = (List<Map<String, Object>>) template.get("files");
+            for (Map<String, Object> fileConfig : fileConfigs) {
+                String path = (String) fileConfig.get("path");
+                Path sourcePath = workspaceRoot.resolve(path).normalize();
+                if (!sourcePath.startsWith(workspaceRoot)) {
+                    throw new ApiException(ErrorCode.PARAM_INVALID);
+                }
+                files.add(TemplateFileRequest.builder()
+                        .path(path)
+                        .language((String) fileConfig.get("language"))
+                        .editable((Boolean) fileConfig.get("editable"))
+                        .content(Files.readString(sourcePath))
+                        .build());
+            }
+            CreateTemplateRequest request = CreateTemplateRequest.builder()
+                    .name((String) template.get("name"))
+                    .middlewareType((String) template.get("middlewareType"))
+                    .scenario((String) template.get("scenario"))
+                    .description((String) template.get("description"))
+                    .tags((String) template.get("tags"))
+                    .status((String) template.get("status"))
+                    .runParams((Map<String, Object>) template.get("runParams"))
+                    .files(files)
+                    .build();
+            return createTemplate(request, userId);
+        } catch (ApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ApiException(ErrorCode.INTERNAL_ERROR);
+        }
     }
 
     @Override

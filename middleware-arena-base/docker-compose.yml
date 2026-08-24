@@ -1,11 +1,8 @@
-# Middleware Arena 共用中间件
-# 部署到 192.168.0.192，业务项目不在此 Compose 中启动。
-#
+# Middleware Arena 共用中间�?# 部署�?192.168.1.177，业务项目不在此 Compose 中启动�?#
 # 启动全部共用中间件：
 #   docker compose up -d
 #
-# 停止：
-#   docker compose down
+# 停止�?#   docker compose down
 
 name: middleware-arena
 

@@ -50,13 +50,13 @@ cd ..\middleware-arena-gateway; mvn clean package -DskipTests
 
 启动后：
 
-- Nacos 控制台：http://192.168.0.192:8848/nacos
-- RabbitMQ 管理台：http://192.168.0.192:15672
-- Sentinel 控制台：http://192.168.0.192:8858
-- Redis：192.168.0.192:6379
-- Elasticsearch：http://192.168.0.192:9200
+- Nacos 控制台：http://192.168.1.177:8848/nacos
+- RabbitMQ 管理台：http://192.168.1.177:15672
+- Sentinel 控制台：http://192.168.1.177:8858
+- Redis：192.168.1.177:6379
+- Elasticsearch：http://192.168.1.177:9200
 
-业务项目仍在开发机直接启动，将 `NACOS_ADDR`、`REDIS_HOST`、`RABBIT_HOST` 指向 `192.168.0.192`。MySQL 继续使用开发机本地实例。
+业务项目仍在开发机直接启动，将 `NACOS_ADDR`、`REDIS_HOST`、`RABBIT_HOST` 指向 `192.168.1.177`。MySQL 继续使用开发机本地实例。
 
 ## 构建策略
 

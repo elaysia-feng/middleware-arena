@@ -84,7 +84,7 @@ public class K6RunnerImpl implements K6Runner {
     }
 
     String buildScript(Long taskId, ExperimentType type, String baseUrl, BenchmarkPlan plan) {
-        String targetUrl = baseUrl + type.k6Path();
+        String targetUrl = baseUrl + plan.endpointPath(type);
         String requestBody = plan.requestBody() == null ? "null" : plan.requestBody().toString();
         String headersJson;
         try {
@@ -134,7 +134,7 @@ public class K6RunnerImpl implements K6Runner {
                 plan.warmupSeconds(), plan.warmupVus(),
                 plan.formalSeconds(), plan.formalVus(),
                 STOP_SECONDS,
-                jsonString(type.httpMethod()), taskId);
+                jsonString(plan.httpMethod(type)), taskId);
     }
 
     BenchmarkPlan benchmarkPlan(RunnerTaskMessage message) {
@@ -147,6 +147,8 @@ public class K6RunnerImpl implements K6Runner {
         JsonNode requestBody = null;
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Content-Type", "application/json");
+        String endpoint = null;
+        String httpMethod = null;
 
         if (message.getRunParamsJson() != null && !message.getRunParamsJson().isBlank()) {
             try {
@@ -167,6 +169,8 @@ public class K6RunnerImpl implements K6Runner {
                 }
                 formalSeconds = parseDurationSeconds(params.path("duration").asText(null),
                         config.getFormalSeconds());
+                endpoint = normalizeEndpoint(params.path("endpoint").asText(null));
+                httpMethod = normalizeHttpMethod(params.path("httpMethod").asText(null));
                 requestBody = params.get("requestBody");
                 JsonNode headersNode = params.path("headers");
                 if (headersNode.isObject()) {
@@ -179,7 +183,29 @@ public class K6RunnerImpl implements K6Runner {
 
         return new BenchmarkPlan(smokeVus, config.getSmokeSeconds(),
                 warmupVus, config.getWarmupSeconds(), formalVus, formalSeconds,
-                requestBody, Map.copyOf(headers));
+                requestBody, Map.copyOf(headers), endpoint, httpMethod);
+    }
+
+    private String normalizeEndpoint(String endpoint) {
+        if (endpoint == null || endpoint.isBlank()) {
+            return null;
+        }
+        String value = endpoint.trim();
+        if (!value.startsWith("/") || value.contains("://") || value.contains("..")) {
+            throw new IllegalArgumentException("endpoint 必须是服务内相对路径，例如 /order/create");
+        }
+        return value;
+    }
+
+    private String normalizeHttpMethod(String method) {
+        if (method == null || method.isBlank()) {
+            return null;
+        }
+        String value = method.trim().toUpperCase();
+        if (!List.of("GET", "POST", "PUT", "DELETE").contains(value)) {
+            throw new IllegalArgumentException("httpMethod 只支持 GET、POST、PUT、DELETE");
+        }
+        return value;
     }
 
     private long parseDurationSeconds(String duration, long defaultSeconds) {
@@ -209,7 +235,24 @@ public class K6RunnerImpl implements K6Runner {
     record BenchmarkPlan(int smokeVus, long smokeSeconds,
             int warmupVus, long warmupSeconds,
             int formalVus, long formalSeconds,
-            JsonNode requestBody, Map<String, String> headers) {
+            JsonNode requestBody, Map<String, String> headers,
+            String endpoint, String httpMethod) {
+
+        BenchmarkPlan(int smokeVus, long smokeSeconds,
+                int warmupVus, long warmupSeconds,
+                int formalVus, long formalSeconds,
+                JsonNode requestBody, Map<String, String> headers) {
+            this(smokeVus, smokeSeconds, warmupVus, warmupSeconds,
+                    formalVus, formalSeconds, requestBody, headers, null, null);
+        }
+
+        String endpointPath(ExperimentType type) {
+            return endpoint == null ? type.k6Path() : endpoint;
+        }
+
+        String httpMethod(ExperimentType type) {
+            return httpMethod == null ? type.httpMethod() : httpMethod;
+        }
 
         long totalSeconds() {
             return smokeSeconds + warmupSeconds + formalSeconds + STOP_SECONDS;

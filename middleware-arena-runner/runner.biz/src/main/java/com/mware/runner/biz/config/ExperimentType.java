@@ -9,7 +9,7 @@ import java.util.Map;
  * {@code run()} 按类型只启动本实验需要的组件（对齐"实验环境按任务临时启动"）：
  * 
  * <pre>
- *   REDIS        : mysql + redis          + product-SUT
+ *   REDIS        : mysql + redis          + order-SUT
  *   RABBITMQ     : mysql + rabbitmq       + order-SUT
  *   ELASTICSEARCH: elasticsearch          + search-SUT
  *   SEATA        : mysql + seata          + order/storage/account 三 SUT（TODO 拆多 SUT 角色）
@@ -21,11 +21,11 @@ import java.util.Map;
  */
 public enum ExperimentType {
 
-    REDIS("product",
+    REDIS("order",
             Map.of(
                     "mysql", new ContainerSpec("mysql", 0.5, 512),
                     "redis", new ContainerSpec("redis", 0.25, 256)),
-            new ContainerResource(0.5, 512), "/product/1", "GET"),
+            new ContainerResource(0.5, 512), "/order/1", "GET"),
     RABBITMQ("order",
             Map.of(
                     "mysql", new ContainerSpec("mysql", 0.5, 512),

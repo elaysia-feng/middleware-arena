@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     agent_mq_retry_interval_seconds: float = 1.0
 
     # 下面 5 个字段必须与 Java 服务连接的是同一个 RabbitMQ 实例。
-    rabbit_host: str = "192.168.0.192"
+    rabbit_host: str = "192.168.1.177"
     rabbit_port: int = 5672
     rabbit_user: str = "guest"
     rabbit_password: str = "guest"

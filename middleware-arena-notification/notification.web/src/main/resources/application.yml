@@ -10,15 +10,15 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:192.168.0.192:8848}
+        server-addr: ${NACOS_ADDR:192.168.1.177:8848}
     sentinel:
       eager: true
       log:
         dir: ${SENTINEL_LOG_DIR:logs/sentinel/notification}
         switch-pid: true
       transport:
-        dashboard: ${SENTINEL_DASHBOARD:192.168.0.192:8858}
-        client-ip: ${SENTINEL_CLIENT_IP:192.168.0.197}
+        dashboard: ${SENTINEL_DASHBOARD:192.168.1.177:8858}
+        client-ip: ${SENTINEL_CLIENT_IP:192.168.1.61}
         port: ${SENTINEL_PORT:8724}
   datasource:
     url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/ma_notification?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
@@ -26,7 +26,7 @@ spring:
     password: ${MYSQL_PASSWORD:@Feng050813}
     driver-class-name: com.mysql.cj.jdbc.Driver
   rabbitmq:
-    host: ${RABBIT_HOST:192.168.0.192}
+    host: ${RABBIT_HOST:192.168.1.177}
     port: ${RABBIT_PORT:5672}
     username: ${RABBIT_USER:guest}
     password: ${RABBIT_PASSWORD:guest}

@@ -5,6 +5,7 @@ import com.mware.common.web.ApiResponse;
 import com.mware.common.web.ErrorCode;
 import com.mware.common.web.UserContext;
 import com.mware.experiment.biz.ExperimentService;
+import com.mware.experiment.dto.request.CreateVersionRequest;
 import com.mware.experiment.dto.request.CreateTemplateRequest;
 import com.mware.experiment.dto.request.UpdateTemplateRequest;
 import com.mware.experiment.dto.response.TaskResponse;
@@ -61,6 +62,16 @@ public class ExperimentController {
         return ApiResponse.ok(experimentService.createTemplate(request, userId));
     }
 
+    @Operation(summary = "从内置资产创建实验模板")
+    @PostMapping("/template/builtin/{builtinKey}")
+    public ApiResponse<TemplateResponse> createBuiltinTemplate(@PathVariable("builtinKey") String builtinKey) {
+        Long userId = UserContext.getUserId();
+        if (userId == null) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED);
+        }
+        return ApiResponse.ok(experimentService.createBuiltinTemplate(builtinKey, userId));
+    }
+
     @Operation(summary = "更新实验模板")
     @PutMapping("/template/{templateId}")
     public ApiResponse<TemplateResponse> updateTemplate(@PathVariable("templateId") Long templateId,
@@ -95,12 +106,12 @@ public class ExperimentController {
 
     @Operation(summary = "为模板保存新版本（文件快照 + 运行参数）")
     @PostMapping("/version")
-    public ApiResponse<VersionResponse> createVersion(
-            @RequestParam("templateId") Long templateId,
-            @RequestParam("filesJson") String filesJson,
-            @RequestParam(value = "runParamsJson", required = false) String runParamsJson,
-            @RequestParam(value = "changeSummary", required = false) String changeSummary) {
-        return ApiResponse.ok(experimentService.createVersion(templateId, filesJson, runParamsJson, changeSummary));
+    public ApiResponse<VersionResponse> createVersion(@RequestBody CreateVersionRequest request) {
+        return ApiResponse.ok(experimentService.createVersion(
+                request.getTemplateId(),
+                request.getFilesJson(),
+                request.getRunParamsJson(),
+                request.getChangeSummary()));
     }
 
     @Operation(summary = "回滚实验版本")

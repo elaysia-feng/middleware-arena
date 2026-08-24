@@ -8,6 +8,16 @@ interface ApiResponse<T> {
   data: T
 }
 
+// 自定义错误，把后端 numeric code 也带出来；下游 catch 可以区分 400/403/500 等
+export class ApiError extends Error {
+  code: number
+  constructor(code: number, message: string) {
+    super(message)
+    this.code = code
+    this.name = 'ApiError'
+  }
+}
+
 interface RetryRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean
 }
@@ -35,7 +45,7 @@ async function refreshAccessToken(): Promise<string> {
         { refreshToken: userStore.refreshToken },
       )
       .then(({ data }) => {
-        if (data.code !== 200) throw new Error(data.message)
+        if (data.code !== 200) throw new ApiError(data.code, data.message)
         userStore.setTokens(data.data.accessToken, data.data.refreshToken)
         return data.data.accessToken
       })
@@ -48,7 +58,7 @@ async function refreshAccessToken(): Promise<string> {
 
 async function retryAfterRefresh(config: RetryRequestConfig) {
   if (config._retry || config.url?.includes('/auth/refresh')) {
-    throw new Error('登录状态已失效')
+    throw new ApiError(401, '登录状态已失效')
   }
   config._retry = true
   config.headers.Authorization = `Bearer ${await refreshAccessToken()}`
@@ -60,16 +70,26 @@ request.interceptors.response.use(
     const body = response.data as ApiResponse<unknown>
     if (body.code === 200) return body.data
     if (body.code === 401) return retryAfterRefresh(response.config as RetryRequestConfig)
-    return Promise.reject(new Error(body.message || '请求失败'))
+    if (typeof body.code === 'number') {
+      return Promise.reject(new ApiError(body.code, body.message || '请求失败'))
+    }
+    // Python Agent 通过 Gateway 返回 FastAPI 原始 JSON，不使用 Java ApiResponse 包装。
+    return response.data
   },
   async (error: AxiosError): Promise<any> => {
     if (error.response?.status === 401 && error.config) {
       try {
         return await retryAfterRefresh(error.config as RetryRequestConfig)
       } catch (refreshError) {
-        useUserStore(pinia).logout()
-        if (location.pathname !== '/login') location.assign('/login')
-        return Promise.reject(refreshError)
+        await useUserStore(pinia).logout()
+        // 保留 redirect query，便于登录后回到原页面
+        const redirect = encodeURIComponent(location.pathname + location.search)
+        if (location.pathname !== '/login') {
+          location.assign(`/login?redirect=${redirect}`)
+        }
+        return Promise.reject(
+          refreshError instanceof Error ? refreshError : new Error('登录状态已失效'),
+        )
       }
     }
     return Promise.reject(error)

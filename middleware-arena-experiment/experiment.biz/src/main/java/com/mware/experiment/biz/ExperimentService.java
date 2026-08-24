@@ -23,6 +23,9 @@ public interface ExperimentService {
     /** 实验模板 CRUD */
     TemplateResponse createTemplate(CreateTemplateRequest request, Long userId);
 
+    /** 将仓库内置模板及其白名单源码复制为当前用户的模板 V1。 */
+    TemplateResponse createBuiltinTemplate(String builtinKey, Long userId);
+
     TemplateResponse updateTemplate(Long templateId, UpdateTemplateRequest request, Long userId);
 
     void deleteTemplate(Long templateId);
