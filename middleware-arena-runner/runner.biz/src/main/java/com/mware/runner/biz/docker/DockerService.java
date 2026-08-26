@@ -70,6 +70,9 @@ public interface DockerService {
      */
     boolean waitHealthy(Long taskId, String url, long timeoutSeconds);
 
+    /** 获取容器最近日志，用于健康检查或启动失败时反馈真实原因。 */
+    String logs(String containerName);
+
     /** docker stats 单容器快照（原始文本，解析见 MetricsCollector） */
     String stats(String containerName);
 

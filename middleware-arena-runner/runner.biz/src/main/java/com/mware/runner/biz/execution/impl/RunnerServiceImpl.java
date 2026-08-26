@@ -127,10 +127,29 @@ public class RunnerServiceImpl implements RunnerService {
         boolean healthy = dockerService.waitHealthy(message.getTaskId(), healthUrl,
                 properties.getDocker().getCommandTimeoutSeconds());
         if (!healthy) {
-            throw new IllegalStateException("SUT 健康检查超时，taskId=" + message.getTaskId());
+            String container = dockerService.containerName(message.getTaskId(), context.type.sutRole());
+            String logs;
+            try {
+                logs = dockerService.logs(container);
+            } catch (RuntimeException logError) {
+                logs = "无法读取 SUT 容器日志：" + logError.getMessage();
+            }
+            if (logs == null || logs.isBlank()) {
+                logs = "SUT 容器没有输出日志，可能在启动前退出或健康地址不可达。";
+            }
+            throw new IllegalStateException("SUT 健康检查超时，taskId=" + message.getTaskId()
+                    + ", healthUrl=" + healthUrl + "\n容器日志（最近 200 行）：\n" + limitErrorDetail(logs));
         }
         logStage(message, "WAITING_HEALTH", "healthUrl=" + healthUrl);
         return message;
+    }
+
+    private String limitErrorDetail(String detail) {
+        int maxLength = 850;
+        if (detail.length() <= maxLength) {
+            return detail;
+        }
+        return detail.substring(detail.length() - maxLength);
     }
 
     @Override

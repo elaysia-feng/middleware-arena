@@ -26,7 +26,7 @@ spring:
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
   datasource:
-    url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/ma_order?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/${MYSQL_DATABASE:ma_order}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: ${MYSQL_USER:root}
     password: ${MYSQL_PASSWORD:@Feng050813}
     driver-class-name: com.mysql.cj.jdbc.Driver

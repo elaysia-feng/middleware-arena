@@ -165,7 +165,10 @@ async function handleRetry() {
   try {
     const fresh = await retryTask(taskId.value)
     ElMessage.success('已发起重跑')
-    router.replace(`/tasks/${fresh.id}`)
+    // retryTask 复用同一个 taskId；不能只 replace 相同路由，否则旧的错误信息会留在页面上。
+    task.value = fresh
+    progressText.value = '任务已重新入队，等待 Runner 接收…'
+    maybeStartPolling()
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '重跑失败')
   } finally {

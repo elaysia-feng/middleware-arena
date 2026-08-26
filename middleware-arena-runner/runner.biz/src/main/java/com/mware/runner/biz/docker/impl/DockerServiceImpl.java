@@ -178,6 +178,11 @@ public class DockerServiceImpl implements DockerService {
     }
 
     @Override
+    public String logs(String containerName) {
+        return run(List.of("logs", "--tail", "200", containerName)).trim();
+    }
+
+    @Override
     public String stats(String containerName) {
         // docker stats --no-stream --format "{{.CPUPerc}}|{{.MemUsage}}" {containerName}，
         // --no-stream 只取当前快照（否则持续流式刷新，run() 会卡到超时）；

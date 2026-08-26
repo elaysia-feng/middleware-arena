@@ -10,7 +10,9 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_ADDR:192.168.1.177:8848}
+        # 网关通过 lb://runner-service 访问 Runner，因此 Runner 必须注册到 Nacos。
+        server-addr: 192.168.1.177:8848
+        register-enabled: true
     sentinel:
       eager: true
       log:
@@ -75,9 +77,9 @@ ma:
     max-files-bytes: ${OSS_MAX_FILES_BYTES:10485760}
   runner:
     docker:
-      # Docker daemon 位于远程 Windows 主机；认证由本机 SSH 配置/密钥负责，不写入密码。
+      # Docker daemon 使用本机 Docker Desktop；基础设施仍通过 192.168.1.177 访问。
       binary: ${DOCKER_BINARY:C:/Program Files/Docker/Docker/resources/bin/docker.exe}
-      host: ${DOCKER_HOST:ssh://Windows10@192.168.1.177}
+      host: ${DOCKER_HOST:npipe:////./pipe/dockerDesktopLinuxEngine}
       command-timeout-seconds: 120
       container-prefix: ma-task
     # 平台全局资源上限（防大量普通用户把机器吃爆；真正建容器的最后防线是 --memory/--cpus）
@@ -116,6 +118,13 @@ ma:
       probe: curlimages/curl:8.5.0
       baseline-prefix: "ma-"
       baseline-suffix: ":v1"
+    # 复用本机已有的 MySQL / Redis；订单 SUT 通过 host.docker.internal 访问本机 MySQL。
+    shared-services:
+      enabled: ${RUNNER_SHARED_SERVICES:true}
+      mysql-addr: ${RUNNER_MYSQL_ADDR:host.docker.internal:3306}
+      mysql-database: ${RUNNER_MYSQL_DATABASE:ma_order_benchmark}
+      redis-host: ${RUNNER_REDIS_HOST:192.168.1.177}
+      redis-port: ${RUNNER_REDIS_PORT:6379}
     # k6 压测档位（第一版从轻；VIP 再开放 50/100/200 VU、更长 duration）
     k6:
       work-dir: ${RUNNER_K6_WORK_DIR:F:/myInterestingProgram/Middleware Arena/.runner/k6}
@@ -125,14 +134,14 @@ ma:
       warmup-seconds: 20
       formal-vus: 20
       formal-seconds: 30
-    # 用户 SUT 的构建环境（离线编译，对应 CLAUDE.md 约束）
+    # 用户 SUT 的构建环境（依赖缺失时允许从 Maven Central 下载）
     build:
       work-dir: ${RUNNER_WORK_DIR:F:/myInterestingProgram/Middleware Arena/.runner/work}
       template-dir: ${RUNNER_TEMPLATE_DIR:F:/myInterestingProgram/Middleware Arena/middleware-arena-templates}
       maven: ${RUNNER_MAVEN:E:/develop/apache-maven-3.9.12-bin/apache-maven-3.9.12/bin/mvn.cmd}
       jdk-home: ${RUNNER_JDK_HOME:E:/develop/java/jdk-21}
-      local-repo: ${RUNNER_MAVEN_REPO:F:/develop/maven-repository}
-      offline: true
+      local-repo: ${RUNNER_MAVEN_REPO:E:/develop/apache-maven-3.9.12-bin/apache-maven-3.9.12/MVN_repo}
+      offline: ${RUNNER_MAVEN_OFFLINE:false}
     # 阶段进度通过 RabbitMQ 回传 experiment-service。
     progress:
       enabled: true

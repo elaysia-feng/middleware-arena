@@ -9,6 +9,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 实验环境编排实现：start 建网起容器返回 SUT 基址，teardown 幂等清理。
  */
@@ -30,6 +33,11 @@ public class ExperimentEnvironmentImpl implements ExperimentEnvironment {
         for (var entry : type.middlewareImages().entrySet()) {
             String role = entry.getKey();
             ExperimentType.ContainerSpec spec = entry.getValue();
+            if (properties.getSharedServices().isEnabled()
+                    && ("mysql".equals(role) || "redis".equals(role))) {
+                log.info("复用宿主机基础设施，跳过任务容器 taskId={}, role={}", taskId, role);
+                continue;
+            }
             String image = resolveImage(spec.imageConfigKey());
             dockerService.startContainer(taskId, role, image,
                     dockerService.resourceArgs(spec.cpus(), spec.memoryMb()));
@@ -38,8 +46,19 @@ public class ExperimentEnvironmentImpl implements ExperimentEnvironment {
         // 3. SUT 也使用当前实验定义的资源，而不是按会员等级固定分配。
         String sutRole = type.sutRole();
         ExperimentType.ContainerResource sutResource = type.sutResource();
-        dockerService.startContainer(taskId, sutRole, sutImage,
+        List<String> sutArgs = new ArrayList<>(
                 dockerService.resourceArgs(sutResource.cpus(), sutResource.memoryMb()));
+        if (properties.getSharedServices().isEnabled()) {
+            RunnerProperties.SharedServices shared = properties.getSharedServices();
+            sutArgs.addAll(List.of(
+                    // Runner 的实验网络统一通过 SUT_PORT=8080 探测；覆盖模板宿主服务原本的 9006。
+                    "--env", "SERVER_PORT=" + ExperimentType.SUT_PORT,
+                    "--env", "MYSQL_ADDR=" + shared.getMysqlAddr(),
+                    "--env", "MYSQL_DATABASE=" + shared.getMysqlDatabase(),
+                    "--env", "REDIS_HOST=" + shared.getRedisHost(),
+                    "--env", "REDIS_PORT=" + shared.getRedisPort()));
+        }
+        dockerService.startContainer(taskId, sutRole, sutImage, sutArgs);
 
         return "http://" + dockerService.containerName(taskId, sutRole) + ":" + ExperimentType.SUT_PORT;
     }

@@ -31,6 +31,9 @@ public class RunnerProperties {
     /** 公共实验中间件 / 工具镜像 */
     private Images images = new Images();
 
+    /** 复用宿主机已有的基础设施，避免每个压测任务重复启动 MySQL / Redis。 */
+    private SharedServices sharedServices = new SharedServices();
+
     /** k6 压测档位 */
     private K6 k6 = new K6();
 
@@ -118,6 +121,19 @@ public class RunnerProperties {
         /** baseline 预构建镜像名模板：{prefix}{type}{suffix} → ma-redis-baseline:v1 */
         private String baselinePrefix = "ma-";
         private String baselineSuffix = ":v1";
+    }
+
+    @Data
+    public static class SharedServices {
+        /** true=复用宿主机已有 MySQL/Redis，false=按实验拓扑创建临时容器。 */
+        private boolean enabled = true;
+        /** Docker 容器访问宿主机 MySQL 的地址。 */
+        private String mysqlAddr = "host.docker.internal:3306";
+        /** 订单 SUT 使用的压测数据库。 */
+        private String mysqlDatabase = "ma_order_benchmark";
+        /** Docker 容器访问已有 Redis 的地址。 */
+        private String redisHost = "192.168.1.177";
+        private int redisPort = 6379;
     }
 
     @Data

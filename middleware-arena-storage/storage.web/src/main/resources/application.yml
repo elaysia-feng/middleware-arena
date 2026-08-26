@@ -21,7 +21,7 @@ spring:
         client-ip: ${SENTINEL_CLIENT_IP:192.168.1.61}
         port: ${SENTINEL_PORT:8726}
   datasource:
-    url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/ma_storage?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/${MYSQL_DATABASE:ma_storage}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: ${MYSQL_USER:root}
     password: ${MYSQL_PASSWORD:@Feng050813}
     driver-class-name: com.mysql.cj.jdbc.Driver
