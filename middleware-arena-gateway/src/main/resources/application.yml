@@ -69,7 +69,11 @@ spring:
         add-to-simple-url-handler-mapping: true
         cors-configurations:
           '[/**]':
-            allowed-origins: "http://localhost:5173"
+            # 前端既支持本机开发，也支持在局域网机器上直接访问远端 Vite。
+            # 必须显式放行远端前端 Origin，否则带 JSON/Authorization 的注册请求会在预检阶段得到 403。
+            allowed-origins:
+              - http://localhost:5173
+              - http://192.168.1.177:5173
             allowed-methods: "*"
             allowed-headers: "*"
             allow-credentials: true
