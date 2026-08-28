@@ -35,7 +35,7 @@ class MetricsCollectorImplTest {
                 }
                 """);
         Map<String, String> stats = Map.of(
-                "ma-task-1001-product", "12.50%|256MiB / 512MiB",
+                "ma-task-1001-order", "12.50%|256MiB / 512MiB",
                 "ma-task-1001-mysql", "5.00%|1GiB / 2GiB",
                 "ma-task-1001-redis", "0.50%|512KiB / 256MiB");
         RunnerProperties properties = new RunnerProperties();

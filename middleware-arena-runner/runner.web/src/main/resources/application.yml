@@ -138,6 +138,7 @@ ma:
     build:
       work-dir: ${RUNNER_WORK_DIR:F:/myInterestingProgram/Middleware Arena/.runner/work}
       template-dir: ${RUNNER_TEMPLATE_DIR:F:/myInterestingProgram/Middleware Arena/middleware-arena-templates}
+      source-root: ${RUNNER_SOURCE_ROOT:}
       maven: ${RUNNER_MAVEN:E:/develop/apache-maven-3.9.12-bin/apache-maven-3.9.12/bin/mvn.cmd}
       jdk-home: ${RUNNER_JDK_HOME:E:/develop/java/jdk-21}
       local-repo: ${RUNNER_MAVEN_REPO:E:/develop/apache-maven-3.9.12-bin/apache-maven-3.9.12/MVN_repo}

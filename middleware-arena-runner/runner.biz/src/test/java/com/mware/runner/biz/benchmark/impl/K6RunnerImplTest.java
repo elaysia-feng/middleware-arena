@@ -23,9 +23,9 @@ class K6RunnerImplTest {
                 Map.of("Content-Type", "application/json"));
 
         String script = runner.buildScript(
-                1001L, ExperimentType.REDIS, "http://ma-task-1001-product:8080", plan);
+                1001L, ExperimentType.REDIS, "http://ma-task-1001-order:8080", plan);
 
-        assertTrue(script.contains("http://ma-task-1001-product:8080/product/1"));
+        assertTrue(script.contains("http://ma-task-1001-order:8080/order/1"));
         assertTrue(script.contains("{ duration: '10s', target: 5 }"));
         assertTrue(script.contains("{ duration: '30s', target: 20 }"));
         assertTrue(script.contains("http_req_failed: ['rate<0.05']"));

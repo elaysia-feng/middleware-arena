@@ -153,8 +153,10 @@ public class RunnerProperties {
     public static class Build {
         /** 用户 candidate 源码工作目录（宿主卷挂入容器） */
         private String workDir = "/var/lib/ma-runner/work";
-        /** SUT 模板工程根目录（TODO：模板实际存储/拉取方式） */
+        /** 模板资产目录；Runner 会从其自身或父目录定位宿主工程根目录。 */
         private String templateDir = "/var/lib/ma-runner/templates";
+        /** 宿主工程根目录；为空时按 templateDir、Runner 工作目录的父目录自动定位。 */
+        private String sourceRoot = "";
         private String maven = "/usr/local/maven/bin/mvn";
         private String jdkHome = "/usr/local/jdk";
         /** 离线 Maven 仓库（MVN_repo），对应 CLAUDE.md 离线编译约束 */
