@@ -23,6 +23,8 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class RunnerTaskStatusConsumer {
 
+    private static final int MAX_ERROR_MESSAGE_LENGTH = 1024;
+
     private final ExperimentTaskMapper experimentTaskMapper;
     private final ExperimentResultMapper experimentResultMapper;
     private final ObjectMapper objectMapper;
@@ -39,6 +41,12 @@ public class RunnerTaskStatusConsumer {
                 : java.time.Instant.ofEpochMilli(message.getOccurredAtEpochMs())
                         .atZone(java.time.ZoneId.systemDefault()).toLocalDateTime();
 
+        // experiment_task.error_message 是 VARCHAR(1024)，避免 Runner 的 Maven/Docker 长日志让状态消息反复重试。
+        String errorMessage = message.getErrorMessage();
+        if (errorMessage != null && errorMessage.length() > MAX_ERROR_MESSAGE_LENGTH) {
+            errorMessage = errorMessage.substring(0, MAX_ERROR_MESSAGE_LENGTH - 3) + "...";
+        }
+
         // 1. 只更新当前投递批次，SUCCESS / FAILED / CANCELLED 终态不能再被后续消息覆盖。
         LambdaUpdateWrapper<ExperimentTask> update = new LambdaUpdateWrapper<ExperimentTask>()
                 .eq(ExperimentTask::getId, message.getTaskId())
@@ -47,7 +55,7 @@ public class RunnerTaskStatusConsumer {
                 .set(ExperimentTask::getStatus, message.getStatus())
                 .set(ExperimentTask::getCurrentStage, message.getCurrentStage())
                 .set(ExperimentTask::getErrorCode, message.getErrorCode())
-                .set(ExperimentTask::getErrorMessage, message.getErrorMessage())
+                .set(ExperimentTask::getErrorMessage, errorMessage)
                 .set(ExperimentTask::getUpdatedAt, LocalDateTime.now());
         if ("RUNNING".equals(message.getStatus())) {
             update.setSql("started_at = COALESCE(started_at, NOW())");
