@@ -13,6 +13,10 @@ public interface ProgressReporter {
     /** 阶段名：BUILDING / RUNNING / WAITING_HEALTH / BENCHMARKING / COLLECTING / CLEANING */
     void stage(RunnerTaskMessage message, String stage);
 
+    /** 回传阶段完成后的关键细节；日志通知失败不应中断任务本身。 */
+    default void detail(RunnerTaskMessage message, String stage, String detail) {
+    }
+
     /** 全部阶段完成，携带本次实验指标。 */
     void completed(RunnerTaskMessage message, String metricsJson);
 

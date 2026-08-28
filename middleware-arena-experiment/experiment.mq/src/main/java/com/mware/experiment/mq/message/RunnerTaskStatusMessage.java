@@ -9,6 +9,8 @@ public class RunnerTaskStatusMessage {
     private String dispatchId;
     private String status;
     private String currentStage;
+    private Integer progress;
+    private String logMessage;
     private String metricsJson;
     private String errorCode;
     private String errorMessage;

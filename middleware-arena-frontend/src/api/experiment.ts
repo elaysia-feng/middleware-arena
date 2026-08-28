@@ -104,6 +104,13 @@ export interface TaskResponse {
   finishedAt?: string
 }
 
+export interface TaskLogResponse {
+  occurredAtEpochMs: number
+  level: string
+  stage?: string
+  message: string
+}
+
 // ----- Templates -----
 export function createTemplate(data: CreateTemplateRequest): Promise<TemplateResponse> {
   return request
@@ -222,4 +229,10 @@ export function getTaskProgress(taskId: number): Promise<string> {
   return request
     .get(`/experiment/task/${taskId}/progress`)
     .then((r) => (typeof r === 'string' ? r : String(r ?? '')))
+}
+
+export function getTaskLogs(taskId: number, limit = 200): Promise<TaskLogResponse[]> {
+  return request
+    .get(`/experiment/task/${taskId}/logs`, { params: { limit } })
+    .then((r) => (r ?? []) as TaskLogResponse[])
 }

@@ -314,6 +314,7 @@ public class RunnerServiceImpl implements RunnerService {
 
     private void logStage(RunnerTaskMessage message, String stage, String detail) {
         log.info("阶段完成 taskId={}, stage={}, {}", message.getTaskId(), stage, detail);
+        progressReporter.detail(message, stage, detail);
     }
 
     /** 只保存一次任务流水线各阶段必须共享的数据。 */

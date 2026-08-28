@@ -13,6 +13,7 @@ import com.mware.common.web.UserContext;
 import com.mware.experiment.biz.ExperimentService;
 import com.mware.experiment.biz.client.AuthMembershipClient;
 import com.mware.experiment.biz.client.MembershipInfo;
+import com.mware.experiment.biz.log.TaskLogStore;
 import com.mware.experiment.domain.ExperimentTask;
 import com.mware.experiment.domain.ExperimentTemplate;
 import com.mware.experiment.domain.ExperimentVersion;
@@ -24,6 +25,7 @@ import com.mware.experiment.dto.response.DiffLine;
 import com.mware.experiment.dto.response.FileDiff;
 import com.mware.experiment.dto.response.AgentAnalysisContextResponse;
 import com.mware.experiment.dto.response.SimilarExperimentResponse;
+import com.mware.experiment.dto.response.TaskLogResponse;
 import com.mware.experiment.dto.response.TaskResponse;
 import com.mware.experiment.dto.response.TemplateResponse;
 import com.mware.experiment.dto.response.VersionDiffResponse;
@@ -88,6 +90,7 @@ public class ExperimentServiceImpl implements ExperimentService {
     private final RunnerCancelTaskProducer runnerCancelTaskProducer;
     private final AuthMembershipClient authMembershipClient;
     private final OssVersionFileStorage ossVersionFileStorage;
+    private final TaskLogStore taskLogStore;
 
     @Value("${ma.internal-token:middleware-arena-internal-token}")
     private String internalToken;
@@ -464,6 +467,7 @@ public class ExperimentServiceImpl implements ExperimentService {
                 .updatedAt(now)
                 .build();
         experimentTaskMapper.insert(task);
+        taskLogStore.clear(task.getId());
 
         // 5. 按 tier 路由到 VIP / FREE 队列。
         // RabbitMQ，
@@ -641,6 +645,21 @@ public class ExperimentServiceImpl implements ExperimentService {
             return "已取消";
         }
         return status;
+    }
+
+    @Override
+    public List<TaskLogResponse> getTaskLogs(Long taskId, int limit) {
+        ExperimentTask task = experimentTaskMapper.selectById(taskId);
+        if (task == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND);
+        }
+        if (!task.getUserId().equals(UserContext.getUserId())) {
+            throw new ApiException(ErrorCode.FORBIDDEN);
+        }
+        if (limit < 1 || limit > 200) {
+            limit = 200;
+        }
+        return taskLogStore.list(taskId, limit);
     }
 
     @Override
@@ -853,6 +872,7 @@ public class ExperimentServiceImpl implements ExperimentService {
         if (updated != 1) {
             throw new ApiException(ErrorCode.NOT_FOUND);
         }
+        taskLogStore.clear(task.getId());
 
         // 7. 重新投递 RunnerTaskMessage（版本内容仍使用不可变快照）。
         RunnerTaskMessage taskMessage = RunnerTaskMessage.builder()

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.mware.experiment.dto.request.CreateTemplateRequest;
 import com.mware.experiment.dto.request.UpdateTemplateRequest;
 import com.mware.experiment.dto.response.TaskResponse;
+import com.mware.experiment.dto.response.TaskLogResponse;
 import com.mware.experiment.dto.response.AgentAnalysisContextResponse;
 import com.mware.experiment.dto.response.SimilarExperimentResponse;
 import com.mware.experiment.dto.response.TemplateResponse;
@@ -51,6 +52,9 @@ public interface ExperimentService {
 
     /** 任务进度（SSE 轮询，返回当前阶段描述） */
     String getTaskProgress(Long taskId);
+
+    /** 查询当前任务最近的 Runner 执行日志。 */
+    List<TaskLogResponse> getTaskLogs(Long taskId, int limit);
 
     /** 查询模板所有版本（按 versionNo 倒序） */
     List<VersionResponse> listVersions(Long templateId);

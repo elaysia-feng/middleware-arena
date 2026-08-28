@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mware.experiment.config.ExperimentRabbitConfig;
+import com.mware.experiment.biz.log.TaskLogStore;
 import com.mware.experiment.domain.ExperimentResult;
 import com.mware.experiment.domain.ExperimentTask;
 import com.mware.experiment.mapper.ExperimentResultMapper;
@@ -28,6 +29,7 @@ public class RunnerTaskStatusConsumer {
     private final ExperimentTaskMapper experimentTaskMapper;
     private final ExperimentResultMapper experimentResultMapper;
     private final ObjectMapper objectMapper;
+    private final TaskLogStore taskLogStore;
 
     @RabbitListener(queues = ExperimentRabbitConfig.QUEUE_STATUS)
     @Transactional
@@ -57,6 +59,9 @@ public class RunnerTaskStatusConsumer {
                 .set(ExperimentTask::getErrorCode, message.getErrorCode())
                 .set(ExperimentTask::getErrorMessage, errorMessage)
                 .set(ExperimentTask::getUpdatedAt, LocalDateTime.now());
+        if (message.getProgress() != null) {
+            update.set(ExperimentTask::getProgress, message.getProgress());
+        }
         if ("RUNNING".equals(message.getStatus())) {
             update.setSql("started_at = COALESCE(started_at, NOW())");
         } else {
@@ -64,7 +69,18 @@ public class RunnerTaskStatusConsumer {
         }
         int updated = experimentTaskMapper.update(null, update);
 
-        // 2. SUCCESS 时把 Runner 返回的指标保存到 experiment_result；重复消息按 taskId 覆盖。
+        // 2. 只有当前 dispatch 的状态更新成功后，才把日志放入当前任务，避免旧投递串入新重试。
+        if (updated == 1) {
+            String level = "FAILED".equals(message.getStatus()) ? "ERROR" : "INFO";
+            String logMessage = message.getLogMessage();
+            if (logMessage == null || logMessage.isBlank()) {
+                logMessage = message.getCurrentStage();
+            }
+            taskLogStore.append(message.getTaskId(), level, message.getCurrentStage(), logMessage,
+                    message.getOccurredAtEpochMs());
+        }
+
+        // 3. SUCCESS 时把 Runner 返回的指标保存到 experiment_result；重复消息按 taskId 覆盖。
         if (updated == 1 && "SUCCESS".equals(message.getStatus())
                 && message.getMetricsJson() != null && !message.getMetricsJson().isBlank()) {
             saveMetrics(message);

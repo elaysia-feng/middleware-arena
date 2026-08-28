@@ -9,6 +9,7 @@ import com.mware.experiment.dto.request.CreateVersionRequest;
 import com.mware.experiment.dto.request.CreateTemplateRequest;
 import com.mware.experiment.dto.request.UpdateTemplateRequest;
 import com.mware.experiment.dto.response.TaskResponse;
+import com.mware.experiment.dto.response.TaskLogResponse;
 import com.mware.experiment.dto.response.TemplateResponse;
 import com.mware.experiment.dto.response.VersionDiffResponse;
 import com.mware.experiment.dto.response.VersionResponse;
@@ -180,5 +181,13 @@ public class ExperimentController {
     @GetMapping("/task/{taskId}/progress")
     public ApiResponse<String> getTaskProgress(@PathVariable("taskId") Long taskId) {
         return ApiResponse.ok(experimentService.getTaskProgress(taskId));
+    }
+
+    @Operation(summary = "查询任务执行日志")
+    @GetMapping("/task/{taskId}/logs")
+    public ApiResponse<List<TaskLogResponse>> getTaskLogs(
+            @PathVariable("taskId") Long taskId,
+            @RequestParam(value = "limit", defaultValue = "200") int limit) {
+        return ApiResponse.ok(experimentService.getTaskLogs(taskId, limit));
     }
 }
