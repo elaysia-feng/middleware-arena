@@ -127,6 +127,10 @@ public class RunnerProperties {
     public static class SharedServices {
         /** true=复用宿主机已有 MySQL/Redis，false=按实验拓扑创建临时容器。 */
         private boolean enabled = true;
+        /** 共享 MySQL 对应的宿主 Docker 容器名，用于结束时采集 stats。 */
+        private String mysqlContainer = "ma-mysql";
+        /** 共享 Redis 对应的宿主 Docker 容器名，用于结束时采集 stats。 */
+        private String redisContainer = "ma-redis";
         /** Docker 容器访问宿主机 MySQL 的地址。 */
         private String mysqlAddr = "host.docker.internal:3306";
         /** 订单 SUT 使用的压测数据库。 */

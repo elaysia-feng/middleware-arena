@@ -54,7 +54,7 @@ public class MetricsCollectorImpl implements MetricsCollector {
         List<String> roles = new ArrayList<>(type.middlewareImages().keySet());
         roles.add(type.sutRole());
         for (String role : roles) {
-            String containerName = dockerService.containerName(taskId, role);
+            String containerName = statsContainerName(taskId, role);
             String rawStats = dockerService.stats(containerName);
             String[] parts = rawStats.split("\\|", 2);
             totalCpuPercent += Double.parseDouble(parts[0].replace("%", "").trim());
@@ -72,6 +72,18 @@ public class MetricsCollectorImpl implements MetricsCollector {
         log.info("指标采集完成 taskId={}, qps={}, p95Ms={}, errorRate={}",
                 taskId, qps, p95Ms, errorRate);
         return result.toString();
+    }
+
+    /** 共享基础设施未创建任务容器，stats 必须读取其宿主容器。 */
+    private String statsContainerName(Long taskId, String role) {
+        if (properties.getSharedServices().isEnabled()) {
+            return switch (role) {
+                case "mysql" -> properties.getSharedServices().getMysqlContainer();
+                case "redis" -> properties.getSharedServices().getRedisContainer();
+                default -> dockerService.containerName(taskId, role);
+            };
+        }
+        return dockerService.containerName(taskId, role);
     }
 
     /** 把 docker stats 的内存值统一换算成 MiB。 */
