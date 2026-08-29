@@ -4,11 +4,13 @@ import com.mware.common.web.ApiException;
 import com.mware.common.web.ApiResponse;
 import com.mware.common.web.ErrorCode;
 import com.mware.experiment.biz.ExperimentService;
+import com.mware.experiment.biz.impl.AgentAnalysisLeaseService;
 import com.mware.experiment.dto.response.AgentAnalysisContextResponse;
 import com.mware.experiment.dto.response.SimilarExperimentResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -16,19 +18,36 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/** Agent 调用的实验只读内部接口，不对前端直接开放。 */
+/** Agent 调用的实验内部接口，不对前端直接开放。 */
 @RestController
 @RequestMapping("/experiment/internal/agent")
 public class AgentInternalController {
 
     private final ExperimentService experimentService;
+    private final AgentAnalysisLeaseService agentAnalysisLeaseService;
     private final String internalToken;
 
     public AgentInternalController(
             ExperimentService experimentService,
+            AgentAnalysisLeaseService agentAnalysisLeaseService,
             @Value("${ma.internal-token:middleware-arena-internal-token}") String internalToken) {
         this.experimentService = experimentService;
+        this.agentAnalysisLeaseService = agentAnalysisLeaseService;
         this.internalToken = internalToken;
+    }
+
+    /**
+     * 分析租约抢占：Python 消费者收到 MQ 消息后先调本接口，抢到才开始分析并 ack 消息。
+     * QUEUED → ANALYZING 条件更新保证多个消费者 / 重投消息只有一个能抢到；
+     * 分析中每次状态回传都会刷新 updatedAt（续约），超时未续约由 Java 定时回收重派。
+     */
+    @PostMapping("/claim/{analysisId}")
+    public ApiResponse<Boolean> claimAnalysis(
+            @PathVariable("analysisId") Long analysisId,
+            @RequestParam("taskId") Long taskId,
+            @RequestHeader("X-Internal-Token") String requestToken) {
+        verifyInternalToken(requestToken);
+        return ApiResponse.ok(agentAnalysisLeaseService.claim(analysisId, taskId));
     }
 
     @GetMapping("/context/{taskId}")

@@ -17,11 +17,9 @@ import java.util.concurrent.TimeUnit;
  * <p>1. 投递到 agent.analysis.exchange / agent.analysis。</p>
  * <p>2. analysisId 作为 CorrelationData.id，便于定位投递失败。</p>
  * <p>3. 与 Runner producer 一样使用 Mandatory Return + Publisher Confirm。</p>
- *
- * TODO[业务]:
- * 1. Runner SUCCESS 且 experiment_result 落库后创建 experiment_analysis(CREATED)。
- * 2. send 成功后再将 analysis 状态推进 CREATED -> QUEUED。
- * 3. confirm 失败的 analysis 由补偿任务回捞，不在 Producer 内写数据库业务。
+ * <p>4. 业务编排：Runner SUCCESS 后由 RunnerTaskStatusConsumer 创建 experiment_analysis(CREATED)
+ *    并调用本 Producer；confirm 失败时 send() 抛异常，消费者把 analysis 置 FAILED，
+ *    不在本 Producer 内写数据库业务。</p>
  */
 @Component
 @Slf4j

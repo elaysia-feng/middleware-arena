@@ -489,7 +489,13 @@ public class ExperimentServiceImpl implements ExperimentService {
                 .dispatchId(dispatchId)
                 .baseline(Boolean.FALSE)
                 .build();
-        runnerTaskProducer.send(taskMessage);
+        // 投递失败（confirm nack / 不可路由 / 超时）：send 内部已触发
+        // RunnerDispatchCompensation 把任务置 FAILED（可重试），这里只转成用户可读的异常。
+        try {
+            runnerTaskProducer.send(taskMessage);
+        } catch (IllegalStateException e) {
+            throw new ApiException(502, "任务投递失败，请稍后重试");
+        }
 
         // 6. Broker confirm 成功且没有 mandatory return，任务才算真正进入排队状态。
         int queued = experimentTaskMapper.update(null, new LambdaUpdateWrapper<ExperimentTask>()
@@ -584,6 +590,7 @@ public class ExperimentServiceImpl implements ExperimentService {
         // 2. 置 status=CANCELLED、finishedAt=now，先落盘再发消息：
         // 先 updateById 持久化 CANCELLED，返回行数 !=1（任务已被删/状态已变）抛 NOT_FOUND 阻止后续 send；
         // 再发 MQ。彻底闭合"send 成功但 update 失败"导致 runner 已取消而 DB 仍 QUEUED/RUNNING 的不一致窗口。
+        String previousStatus = task.getStatus();
         task.setStatus("CANCELLED");
         task.setFinishedAt(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());
@@ -593,7 +600,22 @@ public class ExperimentServiceImpl implements ExperimentService {
         }
 
         // 3. 用mq发送消息, 这个可能后面的字段会拓展
-        runnerCancelTaskProducer.send(RunnerTaskMessage.builder().taskId(taskId).taskType("CANCEL").build());
+        try {
+            runnerCancelTaskProducer.send(RunnerTaskMessage.builder().taskId(taskId).taskType("CANCEL").build());
+        } catch (RuntimeException e) {
+            // 取消消息投递失败：把状态回滚到取消前（QUEUED / RUNNING），任务对用户恢复可取消，
+            // 具体告警备注由 RunnerDispatchCompensation 落库
+            experimentTaskMapper.update(null, new LambdaUpdateWrapper<ExperimentTask>()
+                    .eq(ExperimentTask::getId, taskId)
+                    .eq(ExperimentTask::getStatus, "CANCELLED")
+                    .set(ExperimentTask::getStatus, previousStatus)
+                    .set(ExperimentTask::getErrorCode, "CANCEL_DISPATCH")
+                    .set(ExperimentTask::getErrorMessage, "取消消息投递失败，任务已恢复原状态")
+                    .set(ExperimentTask::getUpdatedAt, LocalDateTime.now()));
+            taskLogStore.append(taskId, "ERROR", "DISPATCH",
+                    "取消消息投递失败，任务已恢复为 " + previousStatus + "，可稍后重试取消", null);
+            throw new ApiException(502, "取消消息投递失败，任务已恢复原状态，请稍后重试");
+        }
     }
 
     @Override
@@ -891,7 +913,13 @@ public class ExperimentServiceImpl implements ExperimentService {
                 .dispatchId(dispatchId)
                 .baseline(Boolean.FALSE)
                 .build();
-        runnerTaskProducer.send(taskMessage);
+        // 投递失败（confirm nack / 不可路由 / 超时）：send 内部已触发
+        // RunnerDispatchCompensation 把任务置 FAILED（可重试），这里只转成用户可读的异常。
+        try {
+            runnerTaskProducer.send(taskMessage);
+        } catch (IllegalStateException e) {
+            throw new ApiException(502, "任务投递失败，请稍后重试");
+        }
 
         // 8. domain → TaskResponse 返回
         return toTaskResponse(task);

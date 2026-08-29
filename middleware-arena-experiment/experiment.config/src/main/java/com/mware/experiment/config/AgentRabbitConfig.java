@@ -14,11 +14,10 @@ import org.springframework.context.annotation.Configuration;
  * <p>1. 本类声明 Java 生产端使用的 exchange / queue / routing-key / DLX。</p>
  * <p>2. Python 端 app/mq/constants.py 必须与这里完全一致，包括 durable 和 queue arguments。</p>
  * <p>3. 自动分析走 MQ；用户主动 analyze/patch/compare 仍可经 Gateway -> FastAPI HTTP。</p>
- *
- * TODO:
- * 1. AgentAnalysisTaskProducer 接入 Publisher Confirm + Mandatory Return。
- * 2. experiment-service 增加 agent.analysis.status.queue 消费者，持久化分析状态/结果。
- * 3. 增加 Java/Python 契约测试，防止两端拓扑字符串或字段名漂移。
+ * <p>4. 生产端 Confirm + Mandatory 见 {@code AgentAnalysisTaskProducer}（已接入）；
+ *    状态消费者见 {@code AgentAnalysisStatusConsumer}（MANUAL ack + 幂等落库，毒消息丢弃、
+ *    瞬时故障 requeue，状态队列定稿不建独立 DLQ）。
+ *    两端拓扑字符串由 {@code AgentMqContractTest} 契约测试守护（存在 Python 仓库时自动比对）。</p>
  */
 @Configuration
 public class AgentRabbitConfig {

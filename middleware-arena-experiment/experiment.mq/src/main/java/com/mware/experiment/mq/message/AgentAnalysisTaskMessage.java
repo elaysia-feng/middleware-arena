@@ -12,11 +12,9 @@ import lombok.NoArgsConstructor;
  * <p>1. MQ 只传任务标识和路由元数据，不传完整代码、metrics、日志。</p>
  * <p>2. Python 端 AgentAnalysisTaskMessage 使用同名 camelCase JSON 字段。</p>
  * <p>3. analysisId + dispatchId 用于幂等，taskId/versionId 用于 Agent 再走 HTTP 拉取真实上下文。</p>
- *
- * TODO:
- * 1. experiment_analysis 表落地后，由 analysisId 对应一条分析任务记录。
- * 2. baselineTaskId 为空时由 Agent 根据实验策略补 baseline。
- * 3. analysisType 第一版只允许 PERFORMANCE_DIAGNOSIS，后续再扩展。
+ * <p>4. experiment_analysis 表由 RunnerTaskStatusConsumer 在 Runner SUCCESS 后自动创建；
+ *    baselineTaskId 为空时由 Agent 根据实验策略补 baseline；
+ *    analysisType 第一版只允许 PERFORMANCE_DIAGNOSIS，后续再扩展。</p>
  */
 @Data
 @Builder

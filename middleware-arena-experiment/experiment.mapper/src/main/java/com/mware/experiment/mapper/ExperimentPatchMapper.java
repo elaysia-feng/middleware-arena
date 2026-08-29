@@ -7,7 +7,7 @@ import org.apache.ibatis.annotations.Mapper;
 /**
  * Agent Patch Mapper。
  *
- * TODO[业务]: ACCEPTED / REJECTED / APPLIED 状态流转放 Service 处理。
+ * 状态流转（PROPOSED → ACCEPTED / REJECTED → APPLIED）见 ExperimentPatchServiceImpl。
  */
 @Mapper
 public interface ExperimentPatchMapper extends BaseMapper<ExperimentPatch> {

@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     agent_mq_max_attempts: int = 3
     # 两次本地重试之间等待秒数，避免失败后立即高速重试。
     agent_mq_retry_interval_seconds: float = 1.0
+    # 并发池上限：同时执行的分析数量（限 LLM 并发费用与 experiment-service 压力）。
+    agent_max_concurrency: int = 2
 
     # 下面 5 个字段必须与 Java 服务连接的是同一个 RabbitMQ 实例。
     rabbit_host: str = "192.168.1.177"

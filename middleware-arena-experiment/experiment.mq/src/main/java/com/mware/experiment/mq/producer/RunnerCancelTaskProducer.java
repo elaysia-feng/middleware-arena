@@ -2,6 +2,7 @@ package com.mware.experiment.mq.producer;
 
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -24,12 +25,16 @@ public class RunnerCancelTaskProducer {
 
     private final RabbitTemplate cancelTaskRabbitTemplate;
     private final StringRedisTemplate stringRedisTemplate;
+    /** 投递失败补偿钩子：落库告警由 biz 实现（取消消息失败时调用方会回滚任务状态） */
+    private final ObjectProvider<RunnerDispatchCompensator> dispatchCompensator;
 
     public RunnerCancelTaskProducer(ConnectionFactory conFactory,
             Jackson2JsonMessageConverter jackson2JsonMessageConverter,
-            StringRedisTemplate stringRedisTemplate) {
+            StringRedisTemplate stringRedisTemplate,
+            ObjectProvider<RunnerDispatchCompensator> dispatchCompensator) {
         this.cancelTaskRabbitTemplate = new RabbitTemplate(conFactory);
         this.cancelTaskRabbitTemplate.setMessageConverter(jackson2JsonMessageConverter);
+        this.dispatchCompensator = dispatchCompensator;
         // 消息发到 Exchange 后，如果找不到任何匹配的 Queue，不要直接把消息丢掉，而是把消息退回给生产者。
         this.cancelTaskRabbitTemplate.setMandatory(true);
         this.cancelTaskRabbitTemplate.setConfirmCallback((correlationData, ack, cause) -> {
@@ -39,8 +44,9 @@ public class RunnerCancelTaskProducer {
             } else {
                 log.error("task publisher confirm FAIL: taskId={}, cause={}",
                         correlationData != null ? correlationData.getId() : "null", cause);
-                // TODO 补偿：confirm=false 说明 Broker 未持久化（交换机写入失败 / 集群异常），
-                // 将 experiment_task 置回 PENDING 交由扫描重投，或走告警
+                // confirm=false 说明 Broker 未持久化（交换机写入失败 / 集群异常）：
+                // 触发补偿（biz 侧打告警日志；取消流程的调用方捕获异常后回滚任务状态）
+                compensate(correlationData, cause);
             }
         });
 
@@ -66,6 +72,20 @@ public class RunnerCancelTaskProducer {
         //    Future（任务结束后 execute 的 finally 会清登记），无需广播，直接丢弃并记日志。
         log.warn("cancel skipped: no registered instance for taskId={} (task finished or never created)",
                 message.getTaskId());
+    }
+
+    /** confirm 失败的统一补偿入口；补偿实现必须幂等 */
+    private void compensate(CorrelationData correlationData, String reason) {
+        if (correlationData == null || correlationData.getId() == null) {
+            return;
+        }
+        dispatchCompensator.ifAvailable(compensator -> {
+            try {
+                compensator.onDispatchFailed(Long.valueOf(correlationData.getId()), "CANCEL", reason);
+            } catch (RuntimeException e) {
+                log.error("cancel dispatch compensation failed: taskId={}", correlationData.getId(), e);
+            }
+        });
     }
 
     /** 查询任务持有的 runner 实例 ID；Redis 异常时返回 null（此时调用方跳过发送） */

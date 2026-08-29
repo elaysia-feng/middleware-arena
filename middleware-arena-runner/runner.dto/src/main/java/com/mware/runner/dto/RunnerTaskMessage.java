@@ -1,5 +1,7 @@
 package com.mware.runner.dto;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -18,6 +20,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RunnerTaskMessage {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     /** 实验任务 ID（experiment_task.id） */
     private Long taskId;
@@ -49,7 +53,7 @@ public class RunnerTaskMessage {
     /**
      * 中间件类型（redis / rabbitmq / elasticsearch / seata），决定实验容器拓扑，
      * 见 {@code ExperimentType}。可选：experiment 侧模板已有 {@code middlewareType}，
-     * 投递时应带上；未带时回退 {@code ExperimentType.UNKNOWN}（TODO：从 runParamsJson 兜底解析）。
+     * 投递时应带上；未带时 {@link #effectiveMiddlewareType()} 从 runParamsJson 兜底解析。
      */
     private String middlewareType;
 
@@ -67,4 +71,23 @@ public class RunnerTaskMessage {
      * false/缺省=现场 build candidate SUT。baseline / candidate 串行压测（不并行），由 experiment 侧编排。
      */
     private Boolean baseline;
+
+    /**
+     * 中间件类型兜底解析：优先显式 middlewareType；为空时从 runParamsJson 的
+     * middlewareType 字段解析（experiment_version.runParamsJson 含该键）；
+     * 仍取不到返回 null，由调用方按 UNKNOWN 处理。解析失败静默返回 null
+     * （dto 模块无日志依赖），让任务走到 Runner 的类型校验获得统一的错误信息。
+     */
+    public String effectiveMiddlewareType() {
+        if (middlewareType != null && !middlewareType.isBlank()) {
+            return middlewareType;
+        }
+        try {
+            JsonNode params = JSON.readTree(runParamsJson);
+            JsonNode type = params.get("middlewareType");
+            return type == null || type.isNull() ? null : type.asText();
+        } catch (Exception e) {
+            return null;
+        }
+    }
 }

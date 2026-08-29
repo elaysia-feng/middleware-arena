@@ -4,15 +4,19 @@ import com.mware.common.web.ApiException;
 import com.mware.common.web.ApiResponse;
 import com.mware.common.web.ErrorCode;
 import com.mware.common.web.UserContext;
+import com.mware.experiment.biz.ExperimentPatchService;
 import com.mware.experiment.biz.ExperimentService;
 import com.mware.experiment.dto.request.CreateVersionRequest;
 import com.mware.experiment.dto.request.CreateTemplateRequest;
+import com.mware.experiment.dto.request.PatchApplyRequest;
+import com.mware.experiment.dto.request.PatchReviewRequest;
 import com.mware.experiment.dto.request.UpdateTemplateRequest;
 import com.mware.experiment.dto.response.TaskResponse;
 import com.mware.experiment.dto.response.TaskLogResponse;
 import com.mware.experiment.dto.response.TemplateResponse;
 import com.mware.experiment.dto.response.VersionDiffResponse;
 import com.mware.experiment.dto.response.VersionResponse;
+import com.mware.experiment.dto.response.PatchResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -42,9 +46,12 @@ import java.util.List;
 public class ExperimentController {
 
     private final ExperimentService experimentService;
+    private final ExperimentPatchService experimentPatchService;
 
-    public ExperimentController(ExperimentService experimentService) {
+    public ExperimentController(ExperimentService experimentService,
+            ExperimentPatchService experimentPatchService) {
         this.experimentService = experimentService;
+        this.experimentPatchService = experimentPatchService;
     }
 
     @Operation(summary = "健康检查")
@@ -189,5 +196,35 @@ public class ExperimentController {
             @PathVariable("taskId") Long taskId,
             @RequestParam(value = "limit", defaultValue = "200") int limit) {
         return ApiResponse.ok(experimentService.getTaskLogs(taskId, limit));
+    }
+
+    @Operation(summary = "查询补丁")
+    @GetMapping("/patch/{patchId}")
+    public ApiResponse<PatchResponse> getPatch(@PathVariable("patchId") Long patchId) {
+        return ApiResponse.ok(experimentPatchService.get(patchId));
+    }
+
+    @Operation(summary = "查询某次分析产生的全部补丁")
+    @GetMapping("/analysis/{analysisId}/patch")
+    public ApiResponse<List<PatchResponse>> listPatches(@PathVariable("analysisId") Long analysisId) {
+        return ApiResponse.ok(experimentPatchService.listByAnalysis(analysisId));
+    }
+
+    @Operation(summary = "评审补丁（ACCEPTED / REJECTED）")
+    @PostMapping("/patch/{patchId}/review")
+    public ApiResponse<Void> reviewPatch(
+            @PathVariable("patchId") Long patchId,
+            @RequestBody PatchReviewRequest request) {
+        experimentPatchService.review(patchId, request.getDecision());
+        return ApiResponse.ok();
+    }
+
+    @Operation(summary = "应用补丁（登记应用后产生的新版本）")
+    @PostMapping("/patch/{patchId}/apply")
+    public ApiResponse<Void> applyPatch(
+            @PathVariable("patchId") Long patchId,
+            @RequestBody PatchApplyRequest request) {
+        experimentPatchService.apply(patchId, request.getAppliedVersionId());
+        return ApiResponse.ok();
     }
 }

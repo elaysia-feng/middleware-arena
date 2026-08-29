@@ -7,6 +7,7 @@ import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
@@ -25,6 +26,8 @@ import java.util.concurrent.TimeUnit;
 public class RunnerCreaetTaskProducer {
 
     private final RabbitTemplate createTaskRabbitTemplate;
+    /** 投递失败补偿钩子：mq 模块不碰数据库，落库补偿由 biz 实现（ObjectProvider 解耦，可为空） */
+    private final ObjectProvider<RunnerDispatchCompensator> dispatchCompensator;
 
     /**
      * 自建生产端模板（注入 Spring Boot 自动配置的 ConnectionFactory，非 new 一个连接）。
@@ -39,14 +42,17 @@ public class RunnerCreaetTaskProducer {
      * </ul>
      */
     public RunnerCreaetTaskProducer(ConnectionFactory connectionFactory,
-            Jackson2JsonMessageConverter taskJsonMessageConverter) {
+            Jackson2JsonMessageConverter taskJsonMessageConverter,
+            ObjectProvider<RunnerDispatchCompensator> dispatchCompensator) {
         this.createTaskRabbitTemplate = new RabbitTemplate(connectionFactory);
+        this.dispatchCompensator = dispatchCompensator;
         // 拿到消息的时候用 json 序列化，而不是 Java 的序列化
         this.createTaskRabbitTemplate.setMessageConverter(taskJsonMessageConverter);
         // Mandatory：消息不可路由时触发 ReturnsCallback，配合 spring.rabbitmq.publisher-returns=true
         this.createTaskRabbitTemplate.setMandatory(true);
         // Publisher Confirm：配合 spring.rabbitmq.publisher-confirm-type=correlated。
-        // correlationData 携带 taskId，可据此将 experiment_task 标记为已投递 / 回捞重投
+        // correlationData 携带 taskId，confirm=false 时触发补偿（experiment_task 置 FAILED 可重试），
+        // 覆盖"confirm 晚于 send() 超时返回"的窗口；send() 同步路径的失败也走同一补偿。
         this.createTaskRabbitTemplate.setConfirmCallback((correlationData, ack, cause) -> {
             if (ack) {
                 log.debug("task publisher confirm OK: taskId={}",
@@ -54,6 +60,7 @@ public class RunnerCreaetTaskProducer {
             } else {
                 log.error("task publisher confirm FAIL: taskId={}, cause={}",
                         correlationData != null ? correlationData.getId() : "null", cause);
+                compensate(correlationData, cause);
             }
         });
         // 只打元数据，不打消息 body：新消息只含 OSS 引用和运行参数，历史消息可能仍含 filesJson，
@@ -67,7 +74,8 @@ public class RunnerCreaetTaskProducer {
      * 投递任务消息到 runner 队列。
      * <p>
      * correlationData 携带 taskId：Broker 持久化成功后 ConfirmCallback（ACK）里可据此
-     * 将 experiment_task 标记为已投递；confirm=false 时由补偿逻辑回捞重投（TODO 见本类）。
+     * 将 experiment_task 标记为已投递；confirm=false 时触发
+     * {@link RunnerDispatchCompensator#onDispatchFailed}（experiment_task 置 FAILED，用户可重试）。
      *
      * @param message 任务消息（taskId / versionId / OSS 文件引用 / runParamsJson）
      */
@@ -83,15 +91,35 @@ public class RunnerCreaetTaskProducer {
         try {
             CorrelationData.Confirm confirm = correlationData.getFuture().get(10, TimeUnit.SECONDS);
             if (!confirm.isAck() || correlationData.getReturned() != null) {
+                String reason = confirm.isAck()
+                        ? "message returned (unroutable)" : confirm.getReason();
+                compensate(correlationData, reason);
                 throw new IllegalStateException("Runner 任务投递失败，taskId=" + message.getTaskId()
-                        + ", cause=" + confirm.getReason());
+                        + ", cause=" + reason);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            compensate(correlationData, "interrupted while waiting confirm");
             throw new IllegalStateException("等待 Runner 任务投递确认时被中断，taskId=" + message.getTaskId(), e);
         } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException e) {
+            compensate(correlationData, e.getClass().getSimpleName() + " while waiting confirm");
             throw new IllegalStateException("等待 Runner 任务投递确认失败，taskId=" + message.getTaskId(), e);
         }
         log.debug("RunnerTaskMessage sent: taskId={}, tier={}", message.getTaskId(), message.getTier());
+    }
+
+    /** confirm 失败 / 超时的统一补偿入口；补偿实现必须幂等 */
+    private void compensate(CorrelationData correlationData, String reason) {
+        if (correlationData == null || correlationData.getId() == null) {
+            return;
+        }
+        dispatchCompensator.ifAvailable(compensator -> {
+            try {
+                compensator.onDispatchFailed(Long.valueOf(correlationData.getId()), "CREATE", reason);
+            } catch (RuntimeException e) {
+                // 补偿失败不能再抛：confirm 回调里抛异常会打断 RabbitMQ 客户端线程
+                log.error("task dispatch compensation failed: taskId={}", correlationData.getId(), e);
+            }
+        });
     }
 }

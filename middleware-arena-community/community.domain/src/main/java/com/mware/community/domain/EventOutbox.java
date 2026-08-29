@@ -31,6 +31,8 @@ import java.time.LocalDateTime;
 public class EventOutbox {
 
     public static final String STATUS_PENDING = "PENDING";
+    /** 已被某实例抢占正在投递（条件更新抢占，防多实例重复投递） */
+    public static final String STATUS_SENDING = "SENDING";
     public static final String STATUS_SENT = "SENT";
     public static final String STATUS_FAILED = "FAILED";
 
@@ -49,7 +51,7 @@ public class EventOutbox {
     /** 事件体 JSON（LikeEvent 序列化） */
     private String payload;
 
-    /** 状态：PENDING 待发送 / SENT 已投递 / FAILED 投递失败 */
+    /** 状态：PENDING 待发送 / SENDING 已抢占投递中 / SENT 已投递 / FAILED 投递失败 */
     private String status;
 
     private LocalDateTime createdAt;

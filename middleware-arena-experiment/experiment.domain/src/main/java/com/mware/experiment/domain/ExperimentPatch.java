@@ -25,6 +25,12 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ExperimentPatch {
 
+    /** 补丁生命周期：PROPOSED →（用户评审）→ ACCEPTED / REJECTED →（应用）→ APPLIED */
+    public static final String STATUS_PROPOSED = "PROPOSED";
+    public static final String STATUS_ACCEPTED = "ACCEPTED";
+    public static final String STATUS_REJECTED = "REJECTED";
+    public static final String STATUS_APPLIED = "APPLIED";
+
     @TableId(type = IdType.AUTO)
     private Long id;
 

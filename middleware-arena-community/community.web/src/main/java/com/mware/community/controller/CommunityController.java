@@ -116,6 +116,15 @@ public class CommunityController {
         return ApiResponse.ok();
     }
 
+    @Operation(summary = "管理员审核删除评论")
+    @DeleteMapping("/post/{postId}/comment/{commentId}/admin")
+    public ApiResponse<Void> adminDeleteComment(
+            @PathVariable("postId") Long postId,
+            @PathVariable("commentId") Long commentId) {
+        commentService.adminDeleteComment(postId, commentId);
+        return ApiResponse.ok();
+    }
+
     @Operation(summary = "点赞（幂等 PUT）")
     @PutMapping("/post/{postId}/like")
     public ApiResponse<Void> like(@PathVariable("postId") Long postId) {

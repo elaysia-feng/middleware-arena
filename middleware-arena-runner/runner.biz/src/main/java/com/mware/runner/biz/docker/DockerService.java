@@ -64,9 +64,11 @@ public interface DockerService {
     // ==================== 健康 / 统计 ====================
 
     /**
-     * 轮询 SUT 健康：在实验网络内起一次性 curl 容器（--rm 自删）探测 {url}，成功即返回。
-     * 不依赖 SUT 镜像自带 curl。
-     * TODO[Runner]：探测失败原因记录 / 超时收敛；探测容器复用 k6 镜像省一次拉取
+     * 轮询 SUT 健康：在实验网络内起一次性 k6 容器（--rm 自删）发单次 HTTP 请求探测 {url}，
+     * 阈值 http_req_failed=rate==0 不满足时 k6 非零退出，即视为未就绪继续轮询。
+     * 探测复用压测的 k6 镜像（压测阶段本来就要用），省一次 curl 镜像拉取；
+     * 也不依赖 SUT 镜像自带 curl。失败原因：waitHealthy 的调用方（RunnerServiceImpl）
+     * 在最终失败时抓取容器日志附进异常，轮询中的单次失败只打 debug 日志。
      */
     boolean waitHealthy(Long taskId, String url, long timeoutSeconds);
 

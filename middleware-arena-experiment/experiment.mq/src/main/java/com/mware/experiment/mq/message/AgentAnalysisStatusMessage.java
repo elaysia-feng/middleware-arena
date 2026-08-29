@@ -12,11 +12,10 @@ import lombok.NoArgsConstructor;
  * <p>1. ANALYZING / SUCCESS / FAILED 统一通过本消息回传。</p>
  * <p>2. resultJson 第一版可承载结构化诊断结果；报告过大时应改为对象存储引用。</p>
  * <p>3. Python 端 app/mq/messages.py 必须保持同名 camelCase JSON 字段。</p>
- *
- * TODO:
- * 1. experiment-service 增加消费者并按 analysisId 幂等更新 experiment_analysis。
- * 2. SUCCESS 时落 bottleneck/confidence/evidence/suggestions/report 等结构化字段。
- * 3. FAILED 时写 errorCode/errorMessage，并决定是否允许用户手动 retry。
+ * <p>4. 消费与落库见 {@link com.mware.experiment.biz.consumer.AgentAnalysisStatusConsumer}：
+ *    SUCCESS 落 bottleneck / confidence / evidence / hypotheses / suggestions / report；
+ *    FAILED 落 errorCode / errorMessage；终态后同 analysisId 的消息幂等丢弃；
+ *    是否允许用户手动 retry 由前端按 FAILED 状态自行发起（重新创建分析记录）。</p>
  */
 @Data
 @Builder

@@ -16,9 +16,9 @@ package com.mware.community.biz.outbox;
  *       由消费者 consumer_event 幂等兜底。</li>
  *   <li><b>事件回放</b>：event_outbox 保留不物理删除，Redis 全丢可据此重建；超期归档 MinIO（冷热分层）。</li>
  * </ul>
- * TODO[高并发]：本组件单实例扫描。多实例需先 SELECT ... FOR UPDATE SKIP LOCKED 或条件更新
- *   （UPDATE event_outbox SET status='SENDING' WHERE id=? AND status='PENDING'）防重复投递；
- *   分库分表后需按分片扫描（aggregate_id 分片）。
+ * 多实例安全：实现侧用条件更新抢占（UPDATE ... SET status='SENDING' WHERE id=? AND
+ *   status IN (PENDING, FAILED)），只有一个实例能抢占成功，防重复投递；
+ *   崩溃遗留的 SENDING 事件超过回收阈值后自动重投。分库分表后需按分片扫描（aggregate_id 分片）。
  */
 public interface OutboxRelay {
 

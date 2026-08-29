@@ -77,6 +77,21 @@ class ExperimentClient:
             response.raise_for_status()
             return response.json()
 
+    async def claim_analysis(self, analysis_id: int, task_id: int) -> bool:
+        """向 Java 抢分析租约（QUEUED → ANALYZING 条件更新）。
+
+        返回 True 表示抢到，可以开始分析并 ack MQ 消息；
+        False 表示已被其他消费者抢占 / 状态不允许（重复投递、未知分析等），直接丢弃消息。
+        """
+        response = await self.post_json(
+            f"/experiment/internal/agent/claim/{analysis_id}?taskId={task_id}",
+            {},
+        )
+        if not isinstance(response, dict) or response.get("code") != 200:
+            message = response.get("message") if isinstance(response, dict) else None
+            raise RuntimeError(message or "experiment-service 租约接口返回格式错误")
+        return bool(response.get("data"))
+
     async def get_analysis_context(
         self,
         task_id: int,

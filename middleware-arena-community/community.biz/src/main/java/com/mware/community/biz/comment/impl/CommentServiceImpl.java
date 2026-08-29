@@ -55,14 +55,20 @@ public class CommentServiceImpl implements CommentService {
     private final CommentCache commentCache;
     private final RedisTemplate<String, Object> redisTemplate;
 
+    /** 管理员 userId 白名单（逗号分隔），adminDeleteComment 用；配置见 community.comment.admin-user-ids */
+    private final java.util.Set<Long> adminUserIds;
+
     public CommentServiceImpl(CommentMapper commentMapper,
                               CommunityPostMapper communityPostMapper,
                               CommentCache commentCache,
-                              RedisTemplate<String, Object> redisTemplate) {
+                              RedisTemplate<String, Object> redisTemplate,
+                              @org.springframework.beans.factory.annotation.Value(
+                                      "${community.comment.admin-user-ids:}") java.util.Set<Long> adminUserIds) {
         this.commentMapper = commentMapper;
         this.communityPostMapper = communityPostMapper;
         this.commentCache = commentCache;
         this.redisTemplate = redisTemplate;
+        this.adminUserIds = adminUserIds == null ? java.util.Set.of() : adminUserIds;
     }
 
     @Override
@@ -194,27 +200,57 @@ public class CommentServiceImpl implements CommentService {
             throw new ApiException(ErrorCode.FORBIDDEN, "禁止跨帖操作");
         }
 
-        // 3. 作者权限校验：仅作者可删除自己的评论
-        //    管理员删除另开 adminDeleteComment，留 TODO
+        // 3. 作者权限校验：仅作者可删除自己的评论；管理员删除走 adminDeleteComment
         if (!comment.getAuthorId().equals(currentUserId())) {
             throw new ApiException(ErrorCode.FORBIDDEN, "仅作者可删除自己的评论");
         }
-        // 当前公开接口只允许作者删除；管理员审核删除不混入本方法。
 
-        // 4. 级联硬删：先删子回复，再删自己（顺序：先子后父，避免子记录短暂悬挂）
-        //    用 delete(Wrapper) 而不是逐条 deleteById，单 SQL 搞定
-        //    硬删 + 级联是当前骨架阶段选择；生产化应改为软删 + 审计日志（is_deleted / 状态字段 + 操作流水表）
-        // 当前数据模型采用硬删；若引入审核/恢复能力，再单独增加软删字段和审计流水。
+        // 4. 级联硬删（先子后父）+ 计数扣减 + 缓存清理
+        cascadeDelete(comment);
+
+        // 5. 硬删 + 级联是当前骨架阶段选择；生产化应改为软删 + 审计日志（is_deleted / 状态字段 + 操作流水表）
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void adminDeleteComment(Long postId, Long commentId) {
+        // 1. 评论存在性 + 跨帖校验（与作者删除同规则）
+        Comment comment = commentMapper.selectById(commentId);
+        if (comment == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND);
+        }
+        if (!comment.getPostId().equals(postId)) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "禁止跨帖操作");
+        }
+
+        // 2. 管理员权限校验：操作人必须在 community.comment.admin-user-ids 白名单内，
+        //    管理员可删除任何人的评论（作者删除走 deleteComment）。
+        //    网关目前只透传 X-User-Id，角色不在 JWT 里，白名单是最小侵入方案；
+        //    后续引入角色体系时可换成 role 校验。
+        Long operatorId = currentUserId();
+        if (!adminUserIds.contains(operatorId)) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "仅管理员可执行审核删除");
+        }
+
+        // 3. 级联硬删（先子后父）+ 计数扣减 + 缓存清理；操作人信息在此处可补审计流水
+        cascadeDelete(comment);
+    }
+
+    /** 级联硬删：先删子回复，再删自己，并把回复数从帖子评论数扣除，事务提交后清缓存。 */
+    private void cascadeDelete(Comment comment) {
+        Long postId = comment.getPostId();
+        Long commentId = comment.getId();
+        // 用 delete(Wrapper) 而不是逐条 deleteById，单 SQL 搞定
         long replyCount = commentMapper.selectCount(new LambdaQueryWrapper<Comment>()
                 .eq(Comment::getParentId, commentId));
         commentMapper.delete(new LambdaQueryWrapper<Comment>()
                 .eq(Comment::getParentId, commentId));
         commentMapper.deleteById(commentId);
 
-        // 5. 删除一级评论时把其直接回复一并从帖子评论数扣除。
+        // 删除一级评论时把其直接回复一并从帖子评论数扣除。
         communityPostMapper.changeCommentCount(postId, -(replyCount + 1L));
 
-        // 6. 事务提交后再清理缓存。
+        // 事务提交后再清理缓存。
         evictCachesAfterCommit(postId);
     }
 

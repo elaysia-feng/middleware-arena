@@ -36,4 +36,12 @@ public interface CommentService {
      * 仅作者可删（管理员删除另开方法），硬删 + 级联删回复。
      */
     void deleteComment(Long postId, Long commentId);
+
+    /**
+     * 管理员审核删除评论（可删任何人的评论，硬删 + 级联删回复）。
+     * <p>
+     * 管理员白名单由 {@code community.comment.admin-user-ids} 配置（逗号分隔 userId）；
+     * 非管理员抛 403。操作人（管理员）与评论作者分离，便于后续补审计流水。
+     */
+    void adminDeleteComment(Long postId, Long commentId);
 }

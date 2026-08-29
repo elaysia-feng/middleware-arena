@@ -1,18 +1,24 @@
-"""RabbitMQ 自动分析任务 Consumer。
+"""RabbitMQ 自动分析任务 Consumer（租约版：快速 ack + 并发池）。
 
-这个文件的职责是“可靠地消费消息”，不是做性能诊断本身。
+设计（解决"分析耗时几分钟，消息被握住几分钟"的问题）：
 
-完整流程：
 1. 从 ``agent.analysis.queue`` 收到 Java 发来的 JSON。
 2. Pydantic 校验成 ``AgentAnalysisTaskMessage``。
-3. 转换成协议无关的 ``AnalysisCommand``。
-4. 调用统一 ``run_analysis``。
-5. 成功后先发布 SUCCESS，再 ACK 原任务。
-6. 失败超过最大次数后发布 FAILED，并 reject(requeue=False) 送入 DLQ。
+3. 向 Java 抢分析租约（POST /experiment/internal/agent/claim/{analysisId}，
+   Java 侧 QUEUED → ANALYZING 条件更新）。
+4. 抢到 → **立刻 ACK 原消息**（MQ 不再被几分钟的分析握住），任务转交
+   内部并发池（asyncio.Semaphore 限并发）异步执行；
+   没抢到（重复投递 / 状态不允许）→ 也 ACK 丢弃，日志说明。
+5. 后台执行 run_analysis：过程中 publish ANALYZING（同时起到续约作用，
+   Java 消费者每次落库都会刷新 experiment_analysis.updatedAt）；
+   成功 publish SUCCESS；本地重试耗尽 publish FAILED。
+6. 崩溃兜底：ack 之后进程崩溃，MQ 侧消息已不在；但 Java 侧租约定时任务
+   （AgentAnalysisLeaseService.reclaimStaleAnalyses）会发现 ANALYZING 超时未续约，
+   自动重新投递任务消息，分析不丢。
 
-为什么使用 manual ACK：
-如果一收到消息 RabbitMQ 就自动 ACK，而 Agent 分析到一半进程崩了，这条任务会永久丢失。
-manual ACK 可以等真正处理成功后再确认消息完成。
+为什么不再"分析全程握着消息"：RabbitMQ 有 consumer ack 超时上限（默认 30 分钟），
+超时会强制断开消费者通道导致消息无限重投；租约方案把 ack 延迟压到毫秒级，
+长耗时的可靠性改由 Java 租约回收负责。
 """
 
 import asyncio
@@ -22,6 +28,7 @@ import time
 from aio_pika.abc import AbstractIncomingMessage
 from pydantic import ValidationError
 
+from app.clients.experiment import ExperimentClient
 from app.core.config import Settings, get_settings
 from app.messaging.rabbitmq.connection import RabbitMQManager, rabbitmq_manager
 from app.messaging.rabbitmq.publisher import publish_status
@@ -33,18 +40,20 @@ logger = logging.getLogger(__name__)
 
 
 class AgentAnalysisConsumer:
-    """消费自动分析任务，并把结果状态回传给 experiment-service。"""
+    """消费自动分析任务：抢租约 → 快速 ack → 并发池执行 → 回传状态。"""
 
     def __init__(
         self,
         manager: RabbitMQManager = rabbitmq_manager,
         settings: Settings | None = None,
+        experiment_client: ExperimentClient | None = None,
     ) -> None:
-        # Manager 负责连接/Queue；Consumer 只负责如何处理一条消息。
         self.manager = manager
         self.settings = settings or get_settings()
-
-        # aio-pika consume() 会返回 consumer_tag，stop 时用它取消消费者注册。
+        self.experiment_client = experiment_client or ExperimentClient(self.settings)
+        # 并发池：限制同时运行的分析数量（LLM 并发费用 / 上下文拉取压力）
+        self._semaphore = asyncio.Semaphore(self.settings.agent_max_concurrency)
+        self._background_tasks: set[asyncio.Task] = set()
         self.consumer_tag: str | None = None
 
     async def start(self) -> None:
@@ -57,8 +66,7 @@ class AgentAnalysisConsumer:
         if self.manager.analysis_queue is None:
             raise RuntimeError("Agent analysis queue 未初始化")
 
-        # no_ack=False = manual ACK。
-        # RabbitMQ 会一直认为消息“处理中”，直到代码显式 ack/reject。
+        # no_ack=False = manual ACK；ack 时机在租约抢占成功后立刻发生（毫秒级）。
         self.consumer_tag = await self.manager.analysis_queue.consume(
             self._on_message,
             no_ack=False,
@@ -66,17 +74,15 @@ class AgentAnalysisConsumer:
         logger.info("Agent MQ consumer started")
 
     async def stop(self) -> None:
-        """取消 Consumer 注册，不再接收新的分析任务。"""
+        """取消 Consumer 注册，并等待在跑的分析任务收尾。"""
         if self.consumer_tag and self.manager.analysis_queue is not None:
             await self.manager.analysis_queue.cancel(self.consumer_tag)
         self.consumer_tag = None
+        if self._background_tasks:
+            await asyncio.gather(*self._background_tasks, return_exceptions=True)
 
     async def _on_message(self, incoming: AbstractIncomingMessage) -> None:
-        """处理 RabbitMQ 推送过来的一条原始消息。
-
-        ``incoming.body`` 是 bytes，不能直接当可信 dict 使用；
-        第一件事必须先通过 Pydantic 做 JSON + 字段类型校验。
-        """
+        """处理 RabbitMQ 推送过来的一条原始消息：校验 → 抢租约 → ack → 后台执行。"""
 
         # ------------------------------------------------------------------
         # 1. 校验 Java -> Python MQ 契约
@@ -91,9 +97,43 @@ class AgentAnalysisConsumer:
             return
 
         # ------------------------------------------------------------------
-        # 2. MQ Message -> Service Command
+        # 2. 向 Java 抢租约（QUEUED → ANALYZING 条件更新）
         # ------------------------------------------------------------------
-        # 从这里开始，后面的业务层不再依赖 RabbitMQ Message 类型。
+        try:
+            claimed = await self.experiment_client.claim_analysis(
+                task.analysis_id, task.task_id,
+            )
+        except Exception:
+            # 租约接口不可达：消息未 ack，Broker 稍后重投（任务不丢）。
+            logger.exception(
+                "claim analysis lease failed, requeue: analysisId=%s",
+                task.analysis_id,
+            )
+            await incoming.nack(requeue=True)
+            return
+
+        if not claimed:
+            # 没抢到：重复投递 / 已终态 / 状态不允许。ack 丢弃，日志说明即可。
+            logger.info(
+                "lease not claimed (duplicate or not dispatchable), drop message: analysisId=%s",
+                task.analysis_id,
+            )
+            await incoming.ack()
+            return
+
+        # ------------------------------------------------------------------
+        # 3. 抢到租约：立刻 ack（MQ 职责到此结束），任务交给并发池后台执行。
+        #    崩溃兜底不在 MQ 层：Java 租约回收任务发现 ANALYZING 超时未续约会重派。
+        # ------------------------------------------------------------------
+        await incoming.ack()
+        logger.info("lease claimed, analysis dispatched to pool: analysisId=%s", task.analysis_id)
+
+        background = asyncio.create_task(self._execute(task))
+        self._background_tasks.add(background)
+        background.add_done_callback(self._background_tasks.discard)
+
+    async def _execute(self, task: AgentAnalysisTaskMessage) -> None:
+        """并发池内执行分析：ANALYZING → run_analysis（本地重试）→ SUCCESS / FAILED。"""
         command = AnalysisCommand(
             analysis_id=task.analysis_id,
             task_id=task.task_id,
@@ -106,112 +146,86 @@ class AgentAnalysisConsumer:
             dispatch_id=task.dispatch_id,
         )
 
-        try:
-            # ------------------------------------------------------------------
-            # 3. 先告诉 Java：任务已经真正开始分析
-            # ------------------------------------------------------------------
-            await publish_status(
-                AgentAnalysisStatusMessage(
-                    analysis_id=task.analysis_id,
-                    task_id=task.task_id,
-                    status="ANALYZING",
-                    current_stage="LOAD_CONTEXT",
-                    progress=5,
-                ),
-                self.manager,
-            )
-
-            # ------------------------------------------------------------------
-            # 4. 执行 Agent 核心分析 + 本地有限重试
-            # ------------------------------------------------------------------
-            result = None
-            for attempt in range(1, self.settings.agent_mq_max_attempts + 1):
-                try:
-                    result = await run_analysis(command)
-                    break
-                except Exception:
-                    if attempt >= self.settings.agent_mq_max_attempts:
-                        # 最后一次仍失败，交给外层统一发布 FAILED + reject。
-                        raise
-
-                    logger.exception(
-                        "Agent analysis failed, retrying: analysisId=%s attempt=%s",
-                        task.analysis_id,
-                        attempt,
-                    )
-
-                    # 避免瞬时错误时无间隔疯狂重试 LLM/HTTP 服务。
-                    await asyncio.sleep(
-                        self.settings.agent_mq_retry_interval_seconds
-                    )
-
-            # 正常情况下成功一定会返回 AnalysisResult；这个检查防止未来逻辑错误返回 None。
-            if result is None:
-                raise RuntimeError("Agent analysis returned no result")
-
-            # ------------------------------------------------------------------
-            # 5. 先可靠发布 SUCCESS，再 ACK 原分析任务
-            # ------------------------------------------------------------------
-            # 顺序非常重要：如果先 ACK，再发布 SUCCESS 时进程崩溃，
-            # Java 会一直看不到最终结果，但 RabbitMQ 又认为原任务已经处理完。
-            await publish_status(
-                AgentAnalysisStatusMessage(
-                    analysis_id=task.analysis_id,
-                    task_id=task.task_id,
-                    status="SUCCESS",
-                    current_stage="DONE",
-                    progress=100,
-                    result_json=result.model_dump_json(),
-                    finished_at_epoch_ms=int(time.time() * 1000),
-                ),
-                self.manager,
-            )
-
-            # 到这里才能确认原任务处理成功。
-            await incoming.ack()
-
-        except Exception as exc:
-            # ------------------------------------------------------------------
-            # 6. 重试耗尽：发布 FAILED，原消息进入 DLQ
-            # ------------------------------------------------------------------
-            logger.exception(
-                "Agent analysis exhausted retries: analysisId=%s",
-                task.analysis_id,
-            )
-
+        async with self._semaphore:
             try:
+                # 先告诉 Java：任务已经真正开始分析（同时刷新租约 updatedAt）
                 await publish_status(
                     AgentAnalysisStatusMessage(
                         analysis_id=task.analysis_id,
                         task_id=task.task_id,
-                        status="FAILED",
-                        current_stage="FAILED",
-                        error_code=type(exc).__name__,
-                        # 限制长度，避免把巨大异常/敏感堆栈塞进 MQ。
-                        error_message=str(exc)[:1000],
+                        status="ANALYZING",
+                        current_stage="LOAD_CONTEXT",
+                        progress=5,
+                    ),
+                    self.manager,
+                )
+
+                # 执行 Agent 核心分析 + 本地有限重试
+                result = None
+                for attempt in range(1, self.settings.agent_mq_max_attempts + 1):
+                    try:
+                        result = await run_analysis(command)
+                        break
+                    except Exception:
+                        if attempt >= self.settings.agent_mq_max_attempts:
+                            # 最后一次仍失败，交给外层统一发布 FAILED。
+                            raise
+
+                        logger.exception(
+                            "Agent analysis failed, retrying: analysisId=%s attempt=%s",
+                            task.analysis_id,
+                            attempt,
+                        )
+                        # 避免瞬时错误时无间隔疯狂重试 LLM/HTTP 服务。
+                        await asyncio.sleep(
+                            self.settings.agent_mq_retry_interval_seconds
+                        )
+
+                # 正常情况下成功一定会返回 AnalysisResult；防止未来逻辑错误返回 None。
+                if result is None:
+                    raise RuntimeError("Agent analysis returned no result")
+
+                # 成功：发布 SUCCESS（Java 消费者按 analysisId 幂等落库）
+                await publish_status(
+                    AgentAnalysisStatusMessage(
+                        analysis_id=task.analysis_id,
+                        task_id=task.task_id,
+                        status="SUCCESS",
+                        current_stage="DONE",
+                        progress=100,
+                        result_json=result.model_dump_json(),
                         finished_at_epoch_ms=int(time.time() * 1000),
                     ),
                     self.manager,
                 )
-            except Exception:
-                # FAILED 状态发布失败也不能掩盖原始异常，先记录日志。
+            except Exception as exc:
+                # 重试耗尽：发布 FAILED（Java 消费者落错误信息；租约回收器见终态后不再干预）
                 logger.exception(
-                    "Failed to publish Agent FAILED status: analysisId=%s",
+                    "Agent analysis exhausted retries: analysisId=%s",
                     task.analysis_id,
                 )
 
-            # requeue=False：不回原队列无限循环。
-            # 因 analysis queue 配了 x-dead-letter-exchange，所以会自动进入 DLQ。
-            await incoming.reject(requeue=False)
+                try:
+                    await publish_status(
+                        AgentAnalysisStatusMessage(
+                            analysis_id=task.analysis_id,
+                            task_id=task.task_id,
+                            status="FAILED",
+                            current_stage="FAILED",
+                            error_code=type(exc).__name__,
+                            # 限制长度，避免把巨大异常/敏感堆栈塞进 MQ。
+                            error_message=str(exc)[:1000],
+                            finished_at_epoch_ms=int(time.time() * 1000),
+                        ),
+                        self.manager,
+                    )
+                except Exception:
+                    # FAILED 状态发布失败也不能掩盖原始异常，先记录日志。
+                    logger.exception(
+                        "Failed to publish Agent FAILED status: analysisId=%s",
+                        task.analysis_id,
+                    )
 
 
 # FastAPI 进程共享一个 Consumer，由 lifespan 负责 start()/stop()。
 agent_analysis_consumer = AgentAnalysisConsumer()
-
-
-# TODO[业务 - 由你实现]:
-# 1. 执行 LLM 前按 analysisId/dispatchId 做幂等，避免重复投递重复计费。
-# 2. 区分“可重试异常”和“不可重试异常”：
-#    - timeout / 5xx / 临时限流：可重试；
-#    - 参数错误 / 数据不存在：直接失败，不要重复调用 LLM。
-# 3. 后续把简单 sleep 升级成指数退避 + jitter。

@@ -116,8 +116,7 @@ public class RunnerProperties {
         private String seata = "seataio/seata-server:2.1.0";
         private String mysql = "mysql:8.0";
         private String k6 = "grafana/k6:0.47.0";
-        /** 健康探测一次性容器镜像（--rm，不依赖 SUT 自带 curl） */
-        private String probe = "curlimages/curl:8.5.0";
+        // 健康探测复用 k6 镜像（单次请求 + http_req_failed 阈值），不再单独维护 probe 镜像
         /** baseline 预构建镜像名模板：{prefix}{type}{suffix} → ma-redis-baseline:v1 */
         private String baselinePrefix = "ma-";
         private String baselineSuffix = ":v1";

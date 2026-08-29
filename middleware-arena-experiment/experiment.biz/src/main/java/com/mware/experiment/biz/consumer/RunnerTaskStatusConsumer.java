@@ -6,28 +6,37 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mware.experiment.config.ExperimentRabbitConfig;
 import com.mware.experiment.biz.log.TaskLogStore;
+import com.mware.experiment.domain.ExperimentAnalysis;
 import com.mware.experiment.domain.ExperimentResult;
 import com.mware.experiment.domain.ExperimentTask;
+import com.mware.experiment.mapper.ExperimentAnalysisMapper;
 import com.mware.experiment.mapper.ExperimentResultMapper;
 import com.mware.experiment.mapper.ExperimentTaskMapper;
+import com.mware.experiment.mq.message.AgentAnalysisTaskMessage;
 import com.mware.experiment.mq.message.RunnerTaskStatusMessage;
+import com.mware.experiment.mq.producer.AgentAnalysisTaskProducer;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /** 将 Runner 回传的阶段、终态和指标保存到 experiment-service。 */
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class RunnerTaskStatusConsumer {
 
     private static final int MAX_ERROR_MESSAGE_LENGTH = 1024;
 
     private final ExperimentTaskMapper experimentTaskMapper;
     private final ExperimentResultMapper experimentResultMapper;
+    private final ExperimentAnalysisMapper experimentAnalysisMapper;
+    private final AgentAnalysisTaskProducer agentAnalysisTaskProducer;
     private final ObjectMapper objectMapper;
     private final TaskLogStore taskLogStore;
 
@@ -85,6 +94,76 @@ public class RunnerTaskStatusConsumer {
                 && message.getMetricsJson() != null && !message.getMetricsJson().isBlank()) {
             saveMetrics(message);
         }
+
+        // 4. SUCCESS 且指标落库后，自动创建 Agent 分析任务并投递 MQ（幂等：一任务一分析）。
+        if (updated == 1 && "SUCCESS".equals(message.getStatus())) {
+            dispatchAutoAnalysis(message.getTaskId());
+        }
+    }
+
+    /**
+     * Runner 成功后自动创建 experiment_analysis（CREATED）并投递 Agent 分析任务，
+     * 投递确认成功后推进 CREATED → QUEUED；投递失败把分析置 FAILED，
+     * 由用户在任务详情页手动重新发起（autoAnalysisForTask 已保证一任务只有一条）。
+     */
+    private void dispatchAutoAnalysis(Long taskId) {
+        long existing = experimentAnalysisMapper.selectCount(
+                new LambdaQueryWrapper<ExperimentAnalysis>()
+                        .eq(ExperimentAnalysis::getTaskId, taskId));
+        if (existing > 0) {
+            return;
+        }
+        ExperimentTask task = experimentTaskMapper.selectById(taskId);
+        if (task == null) {
+            return;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        ExperimentAnalysis analysis = ExperimentAnalysis.builder()
+                .taskId(taskId)
+                .userId(task.getUserId())
+                .versionId(task.getVersionId())
+                .analysisType("PERFORMANCE_DIAGNOSIS")
+                .triggerType("AUTO")
+                .status("CREATED")
+                .progress(0)
+                .dispatchId(UUID.randomUUID().toString())
+                .startedAt(now)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        experimentAnalysisMapper.insert(analysis);
+
+        try {
+            agentAnalysisTaskProducer.send(AgentAnalysisTaskMessage.builder()
+                    .analysisId(analysis.getId())
+                    .taskId(taskId)
+                    .userId(task.getUserId())
+                    .versionId(task.getVersionId())
+                    .middlewareType(null)
+                    .analysisType(analysis.getAnalysisType())
+                    .triggerType("AUTO")
+                    .dispatchId(analysis.getDispatchId())
+                    .queuedAtEpochMs(System.currentTimeMillis())
+                    .build());
+        } catch (RuntimeException e) {
+            // 投递失败：置 FAILED 并记录原因，用户可在任务详情重新发起分析
+            experimentAnalysisMapper.update(null, new LambdaUpdateWrapper<ExperimentAnalysis>()
+                    .eq(ExperimentAnalysis::getId, analysis.getId())
+                    .set(ExperimentAnalysis::getStatus, "FAILED")
+                    .set(ExperimentAnalysis::getErrorCode, "MQ_DISPATCH")
+                    .set(ExperimentAnalysis::getErrorMessage, "分析任务投递失败: " + e.getMessage())
+                    .set(ExperimentAnalysis::getUpdatedAt, LocalDateTime.now()));
+            log.error("自动分析任务投递失败 taskId={}, analysisId={}", taskId, analysis.getId(), e);
+            return;
+        }
+
+        // 投递确认成功：CREATED → QUEUED
+        experimentAnalysisMapper.update(null, new LambdaUpdateWrapper<ExperimentAnalysis>()
+                .eq(ExperimentAnalysis::getId, analysis.getId())
+                .eq(ExperimentAnalysis::getStatus, "CREATED")
+                .set(ExperimentAnalysis::getStatus, "QUEUED")
+                .set(ExperimentAnalysis::getUpdatedAt, LocalDateTime.now()));
     }
 
     private void saveMetrics(RunnerTaskStatusMessage message) {

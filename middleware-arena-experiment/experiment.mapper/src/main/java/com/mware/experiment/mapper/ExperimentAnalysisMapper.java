@@ -7,7 +7,7 @@ import org.apache.ibatis.annotations.Mapper;
 /**
  * Agent 分析 Mapper。
  *
- * TODO[业务]: 状态迁移、幂等条件更新等规则放 Service，不在 Mapper 中写业务判断。
+ * 状态迁移、幂等条件更新等规则在 Service（RunnerTaskStatusConsumer / ExperimentPatchServiceImpl）。
  */
 @Mapper
 public interface ExperimentAnalysisMapper extends BaseMapper<ExperimentAnalysis> {

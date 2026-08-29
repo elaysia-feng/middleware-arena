@@ -115,7 +115,7 @@ ma:
       seata: seataio/seata-server:2.1.0
       mysql: mysql:8.0
       k6: grafana/k6:0.47.0
-      probe: curlimages/curl:8.5.0
+      # 健康探测复用 k6 镜像，无需单独 probe 镜像
       baseline-prefix: "ma-"
       baseline-suffix: ":v1"
     # 复用本机已有的 MySQL / Redis；订单 SUT 通过 host.docker.internal 访问本机 MySQL。

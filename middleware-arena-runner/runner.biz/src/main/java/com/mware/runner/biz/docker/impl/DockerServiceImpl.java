@@ -145,27 +145,47 @@ public class DockerServiceImpl implements DockerService {
 
     @Override
     public boolean waitHealthy(Long taskId, String url, long timeoutSeconds) {
-        // 实验网络内起一次性 curl 容器（--rm 自删）轮询 {url}，HEALTH_POLL_MS 间隔、
-        // timeoutSeconds 超时；不依赖 SUT 镜像自带 curl（SUT 精简镜像未必装了 curl）。
+        // 实验网络内起一次性 k6 容器（--rm 自删）发单次 HTTP 请求探测 {url}；
+        // 探测复用压测的 k6 镜像（省一次 curl 镜像拉取），也不依赖 SUT 镜像自带 curl。
+        // k6 脚本：单迭代 GET，threshold http_req_failed=rate==0 不满足时 k6 非零退出，
+        // 即连接拒绝 / 4xx / 5xx 都会走到 catch 分支视为未就绪，继续轮询下一轮。
+        String probeScript = """
+                import http from 'k6/http';
+                export const options = {
+                  vus: 1,
+                  iterations: 1,
+                  thresholds: { http_req_failed: ['rate==0'] },
+                };
+                export default function () {
+                  http.get(__ENV.TARGET_URL);
+                }
+                """;
         long deadline = System.currentTimeMillis() + timeoutSeconds * 1000L;
         while (System.currentTimeMillis() < deadline) {
+            File script = null;
             try {
-                // docker run --rm --network {net} {probe} -s -o /dev/null -w "%{http_code}" --max-time 2 {url}
-                // --max-time 2：SUT 未就绪时探测容器最多 2 秒返回，保证轮询节奏可控
-                String code = run(List.of(
+                // 探测脚本落到宿主临时文件挂进容器（k6 镜像是 scratch 基底，无 shell 无法 echo 写入）
+                script = File.createTempFile("health-probe-", ".js");
+                Files.writeString(script.toPath(), probeScript);
+                // -e TARGET_URL：URL 不拼进脚本内容，避免转义问题；2s --max-time由 k6 请求超时控制
+                run(List.of(
                         "run", "--rm",
                         "--network", networkName(taskId),
-                        properties.getImages().getProbe(),
-                        "-s", "-o", "/dev/null", "-w", "%{http_code}",
-                        "--max-time", "2",
-                        url)).trim();
-                // 2xx/3xx 视为健康；连接拒绝 / 非 2xx 都算还没好，继续等下轮
-                if (code.startsWith("2") || code.startsWith("3")) {
-                    return true;
-                }
+                        "-v", script.getAbsolutePath() + ":/probe.js",
+                        "-e", "TARGET_URL=" + url,
+                        properties.getImages().getK6(),
+                        "run", "--quiet", "--no-usage-report", "/probe.js"),
+                        15);
+                return true;
             } catch (RuntimeException e) {
-                // SUT 未就绪（连接拒绝、容器未起）→ 忽略，继续轮询
+                // SUT 未就绪（连接拒绝、容器未起、非 2xx）→ 忽略，继续轮询
                 log.debug("健康探测未通过，继续轮询: {}", e.getMessage());
+            } catch (IOException e) {
+                log.debug("健康探测脚本写入失败，继续轮询: {}", e.getMessage());
+            } finally {
+                if (script != null && script.exists()) {
+                    script.deleteOnExit();
+                }
             }
             try {
                 Thread.sleep(HEALTH_POLL_MS);

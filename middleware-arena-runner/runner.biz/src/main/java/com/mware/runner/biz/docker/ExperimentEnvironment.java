@@ -10,8 +10,13 @@ import com.mware.runner.dto.RunnerTaskMessage;
  * k6 通过容器名直连 SUT（如 http://ma-task-1001-product:8080），
  * 不需要宿主端口池 / 端口抢占（对齐方案第 6 点）。
  * <p>
- * TODO[Runner]：SEATA 类型拆多 SUT 角色（order + storage + account，见 ExperimentType）；
- * 实验数据重置（Redis FLUSHDB / 清 MQ 队列 / 重建 ES index）在 baseline→candidate 串行切换时执行。
+ * 多 SUT 实验（SEATA = order + storage + account）已支持：按 {@code ExperimentType.sutSpecs()}
+ * 逐个启动候选镜像容器，k6 只压主链路入口（{@code sutRole()}）。
+ * <p>
+ * 数据一致性说明：baseline 与 candidate 是两个独立任务、各自新建整套容器，
+ * 实验数据天然隔离，无需显式 FLUSHDB / 清队列 / 重建索引；
+ * 仅当 {@code shared-services.enabled=true} 复用宿主机中间件时数据才跨任务共享，
+ * 该场景由业务侧（experiment-service）负责清理，Runner 不动宿主机共享数据。
  */
 public interface ExperimentEnvironment {
 

@@ -92,9 +92,9 @@ public class RunnerServiceImpl implements RunnerService {
 
     @Override
     public RunnerTaskMessage build(RunnerTaskMessage message) {
-        ExperimentType type = ExperimentType.from(message.getMiddlewareType());
+        ExperimentType type = ExperimentType.from(message.effectiveMiddlewareType());
         if (type == ExperimentType.UNKNOWN) {
-            throw new IllegalArgumentException("不支持的实验类型: " + message.getMiddlewareType());
+            throw new IllegalArgumentException("不支持的实验类型: " + message.effectiveMiddlewareType());
         }
 
         TaskContext context = new TaskContext(type);
@@ -208,8 +208,8 @@ public class RunnerServiceImpl implements RunnerService {
         if (taskId == null) {
             throw new IllegalArgumentException("Runner 任务缺少 taskId");
         }
-        if (ExperimentType.from(message.getMiddlewareType()) == ExperimentType.UNKNOWN) {
-            throw new IllegalArgumentException("不支持的实验类型: " + message.getMiddlewareType());
+        if (ExperimentType.from(message.effectiveMiddlewareType()) == ExperimentType.UNKNOWN) {
+            throw new IllegalArgumentException("不支持的实验类型: " + message.effectiveMiddlewareType());
         }
 
         // 1. 在消费线程中先获取资源。失败会直接抛给消费者，因此消息不会提前 ACK。

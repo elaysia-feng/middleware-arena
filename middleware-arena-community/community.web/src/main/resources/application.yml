@@ -37,6 +37,9 @@ spring:
     driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
     url: jdbc:shardingsphere:classpath:application-sharding.yml?placeholder-type=environment
 community:
+  comment:
+    # 管理员 userId 白名单（逗号分隔），可审核删除任何评论
+    admin-user-ids: ${COMMUNITY_ADMIN_USER_IDS:1}
   like:
     # 64 个 Redis Cluster hash-slot 分区，状态/计数/version/Stream 同分区同槽，Lua 可原子执行。
     redis-partitions: 64
