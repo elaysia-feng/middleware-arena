@@ -25,6 +25,8 @@ public class AgentAnalysisStatusMessage {
 
     private Long analysisId;
     private Long taskId;
+    /** 投递批次，防止租约重派后的旧执行覆盖当前分析。 */
+    private String dispatchId;
     private String status;
     private String currentStage;
     private Integer progress;

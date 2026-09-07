@@ -7,7 +7,6 @@ import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -17,7 +16,7 @@ import java.util.List;
  * <ul>
  *   <li><b>只缓存前 3 页</b>（{@link #MAX_CACHED_PAGE}）：深分页本就该慢，避免打爆 Redis 内存</li>
  *   <li><b>TTL 固定 5 分钟</b>（{@link #TTL}）：不做热点分级，热点识别后续 v2 再加</li>
- *   <li><b>不主动失效</b>：评论 add/delete 不碰缓存，靠 TTL 自然过期（5min 脏读可接受）</li>
+ *   <li><b>提交后失效</b>：评论增删提交后清理分页缓存，TTL 作为清理失败的兜底</li>
  *   <li><b>不加 Caffeine</b>：单层 Redis 就够，省一层本地缓存复杂度（v2 按需再加）</li>
  *   <li><b>Fail-open</b>：Redis 异常降级到 DB，不让缓存故障拖垮主链路</li>
  * </ul>
@@ -40,6 +39,10 @@ public class CommentCache {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
+    /**
+     * 注入评论缓存使用的 Redis 客户端。
+     * @param redisTemplate Redis 客户端
+     */
     public CommentCache(RedisTemplate<String, Object> redisTemplate) {
         this.redisTemplate = redisTemplate;
     }
@@ -48,16 +51,21 @@ public class CommentCache {
      * 构造缓存 key：{@code comment:list:p{postId}:p{page}:s{size}}。
      * <p>
      * 把 page/size 拼进 key 而非 hash tag，避免大 key；同时不同分页参数互不污染。
+     * @param postId 帖子 ID
+     * @param page 页码
+     * @param size 每页数量
+     * @return 分页缓存键
      */
     public String buildKey(Long postId, int page, int size) {
         return KEY_PREFIX + "p" + postId + ":p" + page + ":s" + size;
     }
 
     /**
-     * 读取缓存。未命中 / 反序列化异常 / Redis 不可用都返回 {@link Collections#emptyList()}（哨兵值）。
-     * <p>
-     * 业务侧应区分"未命中"和"真的空列表"——这里统一返回哨兵，调用方判定方式：先看 cacheKey 是否被实际查询过
-     * （v1 简化为：始终查 DB 再比对，DB 返回空列表则不再写缓存，避免缓存穿透攻击）。
+     * 单次读取缓存，避免 EXISTS 与 GET 之间过期造成误判；异常由业务侧降级查库。
+     * @param postId 帖子 ID
+     * @param page 页码
+     * @param size 每页数量
+     * @return 命中的列表（可以为空）；未命中或类型不匹配时返回 null
      */
     public List<CommentResponse> get(Long postId, int page, int size) {
         String key = buildKey(postId, page, size);
@@ -69,17 +77,18 @@ public class CommentCache {
                     .map(o -> (CommentResponse) o)
                     .toList();
         }
-        return Collections.emptyList();
+        return null;
     }
 
     /**
-     * 写入缓存。Redis 异常被吞掉，由调用方记日志——缓存写失败不影响主流程。
-     * <p>
-     * 空列表不写入：避免缓存穿透（恶意查不存在的 postId 反复打到 DB）。
+     * 写入缓存，包括空结果，减少重复空查询对数据库的压力；异常由调用方处理。
+     * @param postId 帖子 ID
+     * @param page 页码
+     * @param size 每页数量
+     * @param value 待缓存的列表，null 不写入
      */
     public void put(Long postId, int page, int size, List<CommentResponse> value) {
-        if (value == null || value.isEmpty()) {
-            // 空结果不缓存：防止穿透
+        if (value == null) {
             return;
         }
         String key = buildKey(postId, page, size);
@@ -90,18 +99,21 @@ public class CommentCache {
      * 判断当前 (page, size) 是否启用缓存。
      * <p>
      * 当前规则：{@code page <= MAX_CACHED_PAGE}。深分页直接走 DB。
+     * @param page 页码
+     * @return 是否缓存该页
      */
     public boolean isCacheable(int page) {
         return page >= 1 && page <= MAX_CACHED_PAGE;
     }
 
     /**
-     * 探测缓存 key 是否存在（用于 Cache-Aside 区分"命中"和"未命中"）。
-     * <p>
-     * 区分点：{@link #get} 返回空列表无法区分"真没数据"和"缓存未命中"。
-     * 用 EXISTS 在缓存层显式探测，业务侧先 hasKey 再 get，避免把"未命中"误判为"真没数据"。
+     * 探测缓存 key 是否存在，仅用于诊断；业务读取应使用 get 的返回值判断是否命中。
      * <p>
      * 异常被吞掉，返回 false（=未命中），主流程降级到 DB。
+     * @param postId 帖子 ID
+     * @param page 页码
+     * @param size 每页数量
+     * @return 缓存键是否存在
      */
     public boolean hasKey(Long postId, int page, int size) {
         try {
@@ -113,7 +125,10 @@ public class CommentCache {
         }
     }
 
-    /** 评论增删后按帖子扫描并删除分页缓存，避免写后仍读到旧列表。 */
+    /**
+     * 评论增删后按帖子扫描并删除分页缓存，失败由 TTL 兜底。
+     * @param postId 帖子 ID
+     */
     public void evictPost(Long postId) {
         ScanOptions options = ScanOptions.scanOptions()
                 .match(KEY_PREFIX + "p" + postId + ":*")

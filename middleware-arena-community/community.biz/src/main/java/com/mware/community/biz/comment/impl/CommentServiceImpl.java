@@ -32,11 +32,10 @@ import java.util.List;
  * <p>
  * Request→domain、domain→Response 映射统一在本实现内部完成，Controller 只做薄转发。
  * <p>
- * 计数列（{@code CommunityPost.commentCount}）不在本服务内同步 +1/-1，
- * 由 outbox 异步聚合链路写入（最终一致，见 PostServiceImpl 注释）。
+ * 评论与帖子评论计数在同一个本地事务内更新。
  * <p>
  * <b>缓存（v1）</b>：仅帖子评论分页前 3 页走 Redis Cache-Aside，TTL 5min；
- * 评论增删不主动失效缓存，靠 TTL 自然过期（5min 脏读可接受）。
+ * 评论增删提交后主动失效缓存，清理失败时由 TTL 兜底。
  * 详见 {@link CommentCache} 的设计决策注释。
  */
 @Service
@@ -58,6 +57,14 @@ public class CommentServiceImpl implements CommentService {
     /** 管理员 userId 白名单（逗号分隔），adminDeleteComment 用；配置见 community.comment.admin-user-ids */
     private final java.util.Set<Long> adminUserIds;
 
+    /**
+     * 注入评论持久化、缓存和管理员配置。
+     * @param commentMapper 评论访问接口
+     * @param communityPostMapper 帖子访问接口
+     * @param commentCache 分页缓存
+     * @param redisTemplate 帖子缓存客户端
+     * @param adminUserIds 管理员用户 ID 集合
+     */
     public CommentServiceImpl(CommentMapper commentMapper,
                               CommunityPostMapper communityPostMapper,
                               CommentCache commentCache,
@@ -71,12 +78,18 @@ public class CommentServiceImpl implements CommentService {
         this.adminUserIds = adminUserIds == null ? java.util.Set.of() : adminUserIds;
     }
 
+    /**
+     * 新增评论或一级回复，同时更新帖子评论数。
+     * @param postId 帖子 ID
+     * @param request 评论内容及父评论 ID
+     * @return 已保存的评论
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public CommentResponse addComment(Long postId, CommentRequest request) {
         // 1. 内容校验：非空 + 长度上限
         //    业务侧先把关；Controller 层若再加 @Size 也行，本处不依赖
-        if (request.getContent() == null || request.getContent().trim().isEmpty()) {
+        if (request == null || request.getContent() == null || request.getContent().trim().isEmpty()) {
             throw new ApiException(ErrorCode.PARAM_INVALID, "评论内容不能为空");
         }
         if (request.getContent().length() > CONTENT_MAX_LEN) {
@@ -130,6 +143,13 @@ public class CommentServiceImpl implements CommentService {
         return toCommentResponse(comment);
     }
 
+    /**
+     * 分页查询帖子评论，缓存不可用时查询数据库。
+     * @param postId 帖子 ID
+     * @param page 从 1 开始的页码
+     * @param size 每页数量
+     * @return 本页评论
+     */
     @Override
     public List<CommentResponse> pageComments(Long postId, int page, int size) {
         // 1. 边界校验：page 从 1 开始；size 1~MAX_PAGE_SIZE（防深分页打爆 DB）
@@ -139,11 +159,10 @@ public class CommentServiceImpl implements CommentService {
 
         // 2. 仅前 3 页走缓存（Cache-Aside：命中返回缓存，未命中查 DB + 写缓存）
         if (commentCache.isCacheable(page)) {
-            // 2.1 先探测缓存 key 是否存在
-            //    hasKey 区分"未命中"vs"真没数据"；get() 返回空列表无法区分
-            if (commentCache.hasKey(postId, page, size)) {
-                // 命中：直接返回缓存值（5min 内的高频读全走 Redis，省 DB）
-                return readCacheSafely(postId, page, size);
+            // 2.1 一次读取区分未命中与空列表，缓存异常也继续查库。
+            List<CommentResponse> cached = readCacheSafely(postId, page, size);
+            if (cached != null) {
+                return cached;
             }
 
             // 2.2 未命中：查 DB → 写缓存 → 返回
@@ -156,6 +175,13 @@ public class CommentServiceImpl implements CommentService {
         return queryCommentsFromDb(postId, page, size);
     }
 
+    /**
+     * 按创建时间和 ID 稳定分页查询回复。
+     * @param parentId 父评论 ID
+     * @param page 从 1 开始的页码
+     * @param size 每页数量
+     * @return 本页回复
+     */
     @Override
     public List<CommentResponse> pageReplies(Long parentId, int page, int size) {
         // 1. 父评论存在性校验：查询不存在的 parentId 直接返回空列表前端不好排查，给个明确 404
@@ -176,7 +202,7 @@ public class CommentServiceImpl implements CommentService {
         Page<Comment> mpPage = new Page<>(page, size);
         LambdaQueryWrapper<Comment> wrapper = new LambdaQueryWrapper<Comment>()
                 .eq(Comment::getParentId, parentId)
-                .orderByAsc(Comment::getCreatedAt);
+                .orderByAsc(Comment::getCreatedAt, Comment::getId);
 
         // 4. 执行分页查询
         commentMapper.selectPage(mpPage, wrapper);
@@ -185,6 +211,11 @@ public class CommentServiceImpl implements CommentService {
         return mpPage.getRecords().stream().map(this::toCommentResponse).toList();
     }
 
+    /**
+     * 删除当前用户自己的评论及其回复。
+     * @param postId 帖子 ID
+     * @param commentId 评论 ID
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteComment(Long postId, Long commentId) {
@@ -211,6 +242,11 @@ public class CommentServiceImpl implements CommentService {
         // 5. 硬删 + 级联是当前骨架阶段选择；生产化应改为软删 + 审计日志（is_deleted / 状态字段 + 操作流水表）
     }
 
+    /**
+     * 管理员审核删除评论及其回复。
+     * @param postId 帖子 ID
+     * @param commentId 评论 ID
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void adminDeleteComment(Long postId, Long commentId) {
@@ -241,14 +277,12 @@ public class CommentServiceImpl implements CommentService {
         Long postId = comment.getPostId();
         Long commentId = comment.getId();
         // 用 delete(Wrapper) 而不是逐条 deleteById，单 SQL 搞定
-        long replyCount = commentMapper.selectCount(new LambdaQueryWrapper<Comment>()
+        int replyCount = commentMapper.delete(new LambdaQueryWrapper<Comment>()
                 .eq(Comment::getParentId, commentId));
-        commentMapper.delete(new LambdaQueryWrapper<Comment>()
-                .eq(Comment::getParentId, commentId));
-        commentMapper.deleteById(commentId);
+        int deleted = commentMapper.deleteById(commentId);
 
         // 删除一级评论时把其直接回复一并从帖子评论数扣除。
-        communityPostMapper.changeCommentCount(postId, -(replyCount + 1L));
+        communityPostMapper.changeCommentCount(postId, -(replyCount + (long) deleted));
 
         // 事务提交后再清理缓存。
         evictCachesAfterCommit(postId);
@@ -264,16 +298,22 @@ public class CommentServiceImpl implements CommentService {
         Page<Comment> mpPage = new Page<>(page, size);
         LambdaQueryWrapper<Comment> wrapper = new LambdaQueryWrapper<Comment>()
                 .eq(Comment::getPostId, postId)
-                .orderByAsc(Comment::getCreatedAt);
+                .orderByAsc(Comment::getCreatedAt, Comment::getId);
         commentMapper.selectPage(mpPage, wrapper);
         return mpPage.getRecords().stream().map(this::toCommentResponse).toList();
     }
 
     private void evictCachesAfterCommit(Long postId) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            /** 提交后尽力清理缓存，失败不改变已提交的业务结果。 */
             @Override
             public void afterCommit() {
-                redisTemplate.delete("community:post:" + postId);
+                try {
+                    redisTemplate.delete("community:post:" + postId);
+                } catch (RuntimeException e) {
+                    // 数据已提交，缓存故障不能让客户端误以为评论写入失败并重复提交。
+                    log.warn("评论已提交，帖子缓存清理失败 postId={}", postId, e);
+                }
                 commentCache.evictPost(postId);
             }
         });
@@ -289,7 +329,7 @@ public class CommentServiceImpl implements CommentService {
             // Fail-open：Redis 故障不影响主链路
             log.warn("[CommentCache] Redis get failed, fallback to DB. postId={}, page={}, size={}",
                     postId, page, size, e);
-            return java.util.Collections.emptyList();
+            return null;
         }
     }
 

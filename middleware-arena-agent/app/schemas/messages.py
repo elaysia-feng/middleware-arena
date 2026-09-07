@@ -22,6 +22,18 @@ class AgentAnalysisTaskMessage(BaseModel):
 
     MQ 只传轻量 ID 和调度信息，不传完整代码、metricsJson、日志等大字段。
     Agent 收到这些 ID 后，再通过 Experiment Internal API 拉取真正分析所需数据。
+
+    Attributes:
+        analysis_id: 分析任务 ID。
+        task_id: 实验任务 ID。
+        user_id: 任务所属用户 ID。
+        version_id: 实验版本 ID。
+        baseline_task_id: 可选基线任务 ID。
+        middleware_type: 中间件类型。
+        analysis_type: 分析类型。
+        trigger_type: 触发方式。
+        dispatch_id: 投递批次。
+        queued_at_epoch_ms: 入队时间。
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
@@ -63,12 +75,25 @@ class AgentAnalysisStatusMessage(BaseModel):
 
     Agent 在开始、成功和失败时都可以发布本消息，Java 端消费后更新
     ``experiment_analysis`` 的状态和最终结果。
+
+    Attributes:
+        analysis_id: 分析任务 ID。
+        task_id: 实验任务 ID。
+        dispatch_id: 当前执行的投递批次。
+        status: 分析状态。
+        current_stage: 当前阶段。
+        progress: 百分比进度。
+        result_json: 结构化分析结果。
+        error_code: 失败类型。
+        error_message: 失败摘要。
+        finished_at_epoch_ms: 分析结束时间。
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     analysis_id: int = Field(alias="analysisId", description="要更新的 experiment_analysis.id")
     task_id: int = Field(alias="taskId", description="对应的 experiment_task.id，方便关联和日志定位")
+    dispatch_id: str = Field(alias="dispatchId", min_length=1, description="当前执行的投递批次，用于隔离过期租约")
     status: Literal["ANALYZING", "SUCCESS", "FAILED"] = Field(
         description="Agent 当前状态：分析中、成功或失败"
     )

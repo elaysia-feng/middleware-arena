@@ -12,6 +12,7 @@
 """
 
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
@@ -47,9 +48,12 @@ class ExperimentClient:
     ) -> Any:
         """发送 GET 请求并把响应解析成 JSON。
 
-        参数：
-        - ``path``：相对于 experiment_service_url 的路径，例如 /internal/tasks/1。
-        - ``params``：URL Query 参数。
+        Args:
+            path: 相对于 experiment_service_url 的路径。
+            params: URL 查询参数。
+
+        Returns:
+            解析后的 JSON 响应。
 
         ``raise_for_status()`` 会把 4xx/5xx 转成异常，上层再判断是否应该重试。
         """
@@ -67,6 +71,13 @@ class ExperimentClient:
 
         当前先提供通用方法。后续应该逐步增加 get_task()/get_result() 等语义明确的方法，
         让 Graph Tool 不直接拼 URL 字符串。
+
+        Args:
+            path: 相对于 experiment_service_url 的路径。
+            payload: JSON 请求体。
+
+        Returns:
+            解析后的 JSON 响应。
         """
         async with httpx.AsyncClient(
             base_url=self.settings.experiment_service_url,
@@ -77,27 +88,48 @@ class ExperimentClient:
             response.raise_for_status()
             return response.json()
 
-    async def claim_analysis(self, analysis_id: int, task_id: int) -> bool:
-        """向 Java 抢分析租约（QUEUED → ANALYZING 条件更新）。
+    async def claim_analysis(self, analysis_id: int, task_id: int, dispatch_id: str) -> bool:
+        """向 Java 抢当前投递批次的分析租约。
 
-        返回 True 表示抢到，可以开始分析并 ack MQ 消息；
-        False 表示已被其他消费者抢占 / 状态不允许（重复投递、未知分析等），直接丢弃消息。
+        Args:
+            analysis_id: 分析记录 ID。
+            task_id: 实验任务 ID。
+            dispatch_id: MQ 消息携带的投递批次。
+
+        Returns:
+            是否抢到当前批次，False 表示重复消息或批次已经失效。
+
+        Raises:
+            RuntimeError: 租约接口业务失败或响应格式异常。
         """
+        # 1. 对查询参数编码，防止批次字段干扰 URL 结构。
+        query = urlencode({"taskId": task_id, "dispatchId": dispatch_id})
         response = await self.post_json(
-            f"/experiment/internal/agent/claim/{analysis_id}?taskId={task_id}",
+            f"/experiment/internal/agent/claim/{analysis_id}?{query}",
             {},
         )
+        # 2. 只有显式布尔值才是有效租约结果，字符串不能当作抢占成功。
         if not isinstance(response, dict) or response.get("code") != 200:
             message = response.get("message") if isinstance(response, dict) else None
             raise RuntimeError(message or "experiment-service 租约接口返回格式错误")
-        return bool(response.get("data"))
+        if not isinstance(response.get("data"), bool):
+            raise RuntimeError("experiment-service 租约接口未返回布尔值")
+        return response["data"]
 
     async def get_analysis_context(
         self,
         task_id: int,
         baseline_task_id: int | None = None,
     ) -> dict[str, Any]:
-        """读取 load_context 节点所需的完整实验上下文。"""
+        """读取 load_context 节点所需的完整实验上下文。
+
+        Args:
+            task_id: 实验任务 ID。
+            baseline_task_id: 可选基线任务 ID。
+
+        Returns:
+            实验上下文字典。
+        """
         params = {"baselineTaskId": baseline_task_id} if baseline_task_id else None
         response = await self.get_json(
             f"/experiment/internal/agent/context/{task_id}",
@@ -112,7 +144,15 @@ class ExperimentClient:
         return context
 
     async def find_similar_experiments(self, task_id: int, limit: int = 5) -> list[dict[str, Any]]:
-        """读取同中间件、同场景且指标接近的历史成功实验。"""
+        """读取同中间件、同场景且指标接近的历史成功实验。
+
+        Args:
+            task_id: 当前实验任务 ID。
+            limit: 返回数量上限。
+
+        Returns:
+            相似的历史实验列表。
+        """
         response = await self.get_json(
             f"/experiment/internal/agent/similar/{task_id}",
             params={"limit": limit},
@@ -125,7 +165,7 @@ class ExperimentClient:
             raise RuntimeError("experiment-service 未返回相似实验列表")
         return [item for item in matches if isinstance(item, dict)]
 
-    # TODO[需要你和 Java internal API 一起定]:
+    # 后续内部接口扩展方向：
     # 1. get_task(task_id)：获取实验任务基本信息。
     # 2. get_result(task_id)：获取 QPS/P95/Error/CPU/Memory + metricsJson。
     # 3. get_version(version_id)：获取本次实验精确代码版本信息。
@@ -138,6 +178,6 @@ class ExperimentClient:
 # 进程内共享一个无状态 Client 包装对象；真正的 httpx client 目前仍按请求创建。
 experiment_client = ExperimentClient()
 
-# TODO[性能优化]:
+# 后续性能优化方向：
 # 如果内部 HTTP 调用频繁，可以把 httpx.AsyncClient 也提升为 lifespan 级长连接，
 # 复用 HTTP connection pool，避免每次请求都重新建立 TCP 连接。

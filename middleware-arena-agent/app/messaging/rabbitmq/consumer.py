@@ -101,7 +101,7 @@ class AgentAnalysisConsumer:
         # ------------------------------------------------------------------
         try:
             claimed = await self.experiment_client.claim_analysis(
-                task.analysis_id, task.task_id,
+                task.analysis_id, task.task_id, task.dispatch_id,
             )
         except Exception:
             # 租约接口不可达：消息未 ack，Broker 稍后重投（任务不丢）。
@@ -134,6 +134,7 @@ class AgentAnalysisConsumer:
 
     async def _execute(self, task: AgentAnalysisTaskMessage) -> None:
         """并发池内执行分析：ANALYZING → run_analysis（本地重试）→ SUCCESS / FAILED。"""
+        # 1. 保留投递批次，所有状态回传都必须绑定当前租约。
         command = AnalysisCommand(
             analysis_id=task.analysis_id,
             task_id=task.task_id,
@@ -146,6 +147,7 @@ class AgentAnalysisConsumer:
             dispatch_id=task.dispatch_id,
         )
 
+        # 2. 有限并发执行并回传终态，由 Java 忽略失效批次的结果。
         async with self._semaphore:
             try:
                 # 先告诉 Java：任务已经真正开始分析（同时刷新租约 updatedAt）
@@ -153,6 +155,7 @@ class AgentAnalysisConsumer:
                     AgentAnalysisStatusMessage(
                         analysis_id=task.analysis_id,
                         task_id=task.task_id,
+                        dispatch_id=task.dispatch_id,
                         status="ANALYZING",
                         current_stage="LOAD_CONTEXT",
                         progress=5,
@@ -190,6 +193,7 @@ class AgentAnalysisConsumer:
                     AgentAnalysisStatusMessage(
                         analysis_id=task.analysis_id,
                         task_id=task.task_id,
+                        dispatch_id=task.dispatch_id,
                         status="SUCCESS",
                         current_stage="DONE",
                         progress=100,
@@ -210,6 +214,7 @@ class AgentAnalysisConsumer:
                         AgentAnalysisStatusMessage(
                             analysis_id=task.analysis_id,
                             task_id=task.task_id,
+                            dispatch_id=task.dispatch_id,
                             status="FAILED",
                             current_stage="FAILED",
                             error_code=type(exc).__name__,

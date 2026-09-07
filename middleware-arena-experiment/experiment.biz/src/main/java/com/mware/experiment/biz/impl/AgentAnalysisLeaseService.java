@@ -22,12 +22,12 @@ import java.util.UUID;
  * <p>背景：Python 消费者改为"收到任务 → 向 Java 抢租约 → 立刻 ack 原消息 → 后台执行"，
  * MQ 不再被长耗时分析握住。租约本体就是 experiment_analysis 的状态 + updatedAt：</p>
  * <ul>
- *   <li><b>抢占</b>：QUEUED → ANALYZING 的条件更新，只有一个消费者能抢到（乐观锁）；</li>
+ *   <li><b>抢占</b>：当前批次的 CREATED / QUEUED → ANALYZING 条件更新，只有一个消费者能抢到；</li>
  *   <li><b>续约</b>：Python 分析中每次 publish ANALYZING 都会刷新 updatedAt（Java 消费者落库）；</li>
- *   <li><b>回收</b>：本类的定时任务把 updatedAt 超过租约时长仍停留在 ANALYZING 的任务
+ *   <li><b>回收</b>：本类的定时任务把 updatedAt 超过租约时长仍未进入终态的任务
  *       重新投递（Python 崩溃 / 网络分区后任务不丢），超过最大重派时限则置 FAILED 放弃。</li>
  * </ul>
- * <p>幂等保障：重复执行的分析都会发终态消息，Java 消费者对终态后的消息直接忽略。</p>
+ * <p>幂等保障：抢占和结果回传均校验 dispatchId，旧批次及终态后的消息直接忽略。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -46,18 +46,28 @@ public class AgentAnalysisLeaseService {
     private int maxRequeueHours;
 
     /**
-     * Python 消费者抢租约：QUEUED → ANALYZING 条件更新。
+     * Python 消费者凭消息批次抢租约；允许 CREATED，覆盖消息先于 Confirm 回写到达的窗口。
      *
+     * @param analysisId 分析 ID
+     * @param taskId 实验任务 ID
+     * @param dispatchId 消息投递批次
      * @return true=抢到，可以开始分析；false=已被其他消费者抢占 / 状态不允许 / 记录不存在
      */
-    public boolean claim(Long analysisId, Long taskId) {
+    public boolean claim(Long analysisId, Long taskId, String dispatchId) {
+        // 1. 旧消息不能抢占新批次的租约。
+        if (analysisId == null || taskId == null || dispatchId == null || dispatchId.isBlank()) {
+            return false;
+        }
         ExperimentAnalysis analysis = experimentAnalysisMapper.selectById(analysisId);
         if (analysis == null || !taskId.equals(analysis.getTaskId())) {
             return false;
         }
+        // 2. 抢占条件由数据库原子判断，确认回写不能把 ANALYZING 降回 QUEUED。
         int updated = experimentAnalysisMapper.update(null, new LambdaUpdateWrapper<ExperimentAnalysis>()
                 .eq(ExperimentAnalysis::getId, analysisId)
-                .eq(ExperimentAnalysis::getStatus, "QUEUED")
+                .eq(ExperimentAnalysis::getTaskId, taskId)
+                .eq(ExperimentAnalysis::getDispatchId, dispatchId)
+                .in(ExperimentAnalysis::getStatus, "CREATED", "QUEUED")
                 .set(ExperimentAnalysis::getStatus, "ANALYZING")
                 .set(ExperimentAnalysis::getCurrentStage, "LOAD_CONTEXT")
                 .set(ExperimentAnalysis::getProgress, 5)
@@ -76,34 +86,51 @@ public class AgentAnalysisLeaseService {
      */
     @Scheduled(fixedDelayString = "${agent.analysis.reclaim-interval-ms:60000}")
     public void reclaimStaleAnalyses() {
+        // 1. 同时恢复待投递、排队失联和执行失联记录，按最久未更新优先扫描。
         LocalDateTime now = LocalDateTime.now();
         List<ExperimentAnalysis> stale = experimentAnalysisMapper.selectList(
                 new LambdaQueryWrapper<ExperimentAnalysis>()
-                        .eq(ExperimentAnalysis::getStatus, "ANALYZING")
+                        .in(ExperimentAnalysis::getStatus, "CREATED", "QUEUED", "ANALYZING")
                         .lt(ExperimentAnalysis::getUpdatedAt, now.minusMinutes(leaseMinutes))
                         .lt(ExperimentAnalysis::getCreatedAt, now)
+                        .orderByAsc(ExperimentAnalysis::getUpdatedAt, ExperimentAnalysis::getId)
                         .last("LIMIT 20"));
+        // 2. 用查询时的批次和更新时间做条件更新，避免误回收刚续约或已完成的分析。
         for (ExperimentAnalysis analysis : stale) {
             // 超过最长重派窗口：放弃重派，置 FAILED（防止永久故障的目标无限循环烧 LLM 费用）
             if (analysis.getCreatedAt().isBefore(now.minusHours(maxRequeueHours))) {
-                experimentAnalysisMapper.update(null, new LambdaUpdateWrapper<ExperimentAnalysis>()
+                int expired = experimentAnalysisMapper.update(null, new LambdaUpdateWrapper<ExperimentAnalysis>()
                         .eq(ExperimentAnalysis::getId, analysis.getId())
-                        .eq(ExperimentAnalysis::getStatus, "ANALYZING")
+                        .eq(ExperimentAnalysis::getStatus, analysis.getStatus())
+                        .eq(ExperimentAnalysis::getDispatchId, analysis.getDispatchId())
+                        .eq(ExperimentAnalysis::getUpdatedAt, analysis.getUpdatedAt())
                         .set(ExperimentAnalysis::getStatus, "FAILED")
                         .set(ExperimentAnalysis::getErrorCode, "LEASE_EXPIRED")
                         .set(ExperimentAnalysis::getErrorMessage, "分析多次重派仍未完成，已放弃")
+                        .set(ExperimentAnalysis::getFinishedAt, now)
                         .set(ExperimentAnalysis::getUpdatedAt, now));
-                log.error("analysis 超过最长重派窗口，置 FAILED: analysisId={}", analysis.getId());
+                if (expired == 1) {
+                    log.error("analysis 超过最长重派窗口，置 FAILED: analysisId={}", analysis.getId());
+                }
                 continue;
             }
 
-            // 重新生成 dispatchId 并重投任务消息；状态退回 QUEUED 让 Python 重新抢租约
-            experimentAnalysisMapper.update(null, new LambdaUpdateWrapper<ExperimentAnalysis>()
+            // 先持久化新批次，发送时使用同一个值；失败仍保持可恢复的 CREATED。
+            String dispatchId = UUID.randomUUID().toString();
+            int updated = experimentAnalysisMapper.update(null, new LambdaUpdateWrapper<ExperimentAnalysis>()
                     .eq(ExperimentAnalysis::getId, analysis.getId())
-                    .eq(ExperimentAnalysis::getStatus, "ANALYZING")
-                    .set(ExperimentAnalysis::getStatus, "QUEUED")
-                    .set(ExperimentAnalysis::getDispatchId, UUID.randomUUID().toString())
+                    .eq(ExperimentAnalysis::getStatus, analysis.getStatus())
+                    .eq(ExperimentAnalysis::getDispatchId, analysis.getDispatchId())
+                    .eq(ExperimentAnalysis::getUpdatedAt, analysis.getUpdatedAt())
+                    .set(ExperimentAnalysis::getStatus, "CREATED")
+                    .set(ExperimentAnalysis::getDispatchId, dispatchId)
+                    .set(ExperimentAnalysis::getProgress, 0)
+                    .set(ExperimentAnalysis::getCurrentStage, null)
+                    .set(ExperimentAnalysis::getStartedAt, null)
                     .set(ExperimentAnalysis::getUpdatedAt, now));
+            if (updated != 1) {
+                continue;
+            }
             try {
                 agentAnalysisTaskProducer.send(AgentAnalysisTaskMessage.builder()
                         .analysisId(analysis.getId())
@@ -114,9 +141,15 @@ public class AgentAnalysisLeaseService {
                         .middlewareType(analysis.getMiddlewareType())
                         .analysisType(analysis.getAnalysisType())
                         .triggerType(analysis.getTriggerType())
-                        .dispatchId(analysis.getDispatchId())
+                        .dispatchId(dispatchId)
                         .queuedAtEpochMs(System.currentTimeMillis())
                         .build());
+                experimentAnalysisMapper.update(null, new LambdaUpdateWrapper<ExperimentAnalysis>()
+                        .eq(ExperimentAnalysis::getId, analysis.getId())
+                        .eq(ExperimentAnalysis::getDispatchId, dispatchId)
+                        .eq(ExperimentAnalysis::getStatus, "CREATED")
+                        .set(ExperimentAnalysis::getStatus, "QUEUED")
+                        .set(ExperimentAnalysis::getUpdatedAt, LocalDateTime.now()));
                 log.warn("analysis 租约过期已重派: analysisId={}, leaseMinutes={}",
                         analysis.getId(), leaseMinutes);
             } catch (RuntimeException e) {
