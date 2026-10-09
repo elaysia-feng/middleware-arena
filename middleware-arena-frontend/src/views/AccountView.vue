@@ -22,16 +22,6 @@
       <p class="tip">VIP 实际状态以 effectiveTier 为准（后端 AuthServiceImpl 在 vipExpireAt 过期时返回 FREE）。</p>
     </el-card>
 
-    <el-card v-loading="balanceLoading" class="account-card">
-      <template #header>
-        <h2 class="account-title">我的余额</h2>
-      </template>
-      <div v-if="balance" class="balance-row">
-        <span class="balance-amount">¥ {{ formatCents(balance.balance) }}</span>
-      </div>
-      <el-empty v-else description="暂无余额信息" />
-      <p class="tip">后端 balance 单位是"分"，已自动换算成元显示。</p>
-    </el-card>
   </div>
 </template>
 
@@ -40,13 +30,10 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { getMe, mockRecharge } from '@/api/auth'
-import { getBalance, formatCents } from '@/api/account'
 
 const userStore = useUserStore()
 const loading = ref(false)
 const recharging = ref(false)
-const balanceLoading = ref(false)
-const balance = ref<{ userId: number; balance: number } | null>(null)
 
 const user = computed(() => userStore.userInfo)
 
@@ -76,18 +63,6 @@ async function refreshUser() {
   }
 }
 
-async function refreshBalance() {
-  if (!user.value) return
-  balanceLoading.value = true
-  try {
-    balance.value = await getBalance(user.value.id)
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '获取余额失败')
-  } finally {
-    balanceLoading.value = false
-  }
-}
-
 async function handleRecharge() {
   recharging.value = true
   try {
@@ -103,7 +78,6 @@ async function handleRecharge() {
 
 onMounted(async () => {
   if (!userStore.userInfo) await refreshUser()
-  await refreshBalance()
 })
 </script>
 
@@ -124,15 +98,5 @@ onMounted(async () => {
   margin-top: 12px;
   color: #909399;
   font-size: 12px;
-}
-.balance-row {
-  display: flex;
-  align-items: baseline;
-  gap: 16px;
-}
-.balance-amount {
-  font-size: 32px;
-  font-weight: 700;
-  color: #f56c6c;
 }
 </style>

@@ -13,21 +13,21 @@ runParams:
   stockFailureRate: 0.1
   accountTimeoutRate: 0.05
 files:
-  - path: middleware-arena-order/order.biz/src/main/java/com/mware/order/biz/impl/OrderServiceImpl.java
+  - path: middleware-arena-lab-order/order.biz/src/main/java/com/mware/order/biz/impl/OrderServiceImpl.java
     language: java
     editable: true
-  - path: middleware-arena-storage/storage.biz/src/main/java/com/mware/storage/biz/impl/StorageServiceImpl.java
+  - path: middleware-arena-lab-seata-storage/storage.biz/src/main/java/com/mware/storage/biz/impl/StorageServiceImpl.java
     language: java
     editable: true
-  - path: middleware-arena-account/account.biz/src/main/java/com/mware/account/biz/impl/AccountServiceImpl.java
+  - path: middleware-arena-lab-seata-account/account.biz/src/main/java/com/mware/account/biz/impl/AccountServiceImpl.java
     language: java
     editable: true
-  - path: middleware-arena-order/order.web/src/main/resources/application.yml
+  - path: middleware-arena-lab-order/order.web/src/main/resources/application.yml
     language: yaml
     editable: true
-  - path: middleware-arena-storage/storage.web/src/main/resources/application.yml
+  - path: middleware-arena-lab-seata-storage/storage.web/src/main/resources/application.yml
     language: yaml
     editable: true
-  - path: middleware-arena-account/account.web/src/main/resources/application.yml
+  - path: middleware-arena-lab-seata-account/account.web/src/main/resources/application.yml
     language: yaml
     editable: true

@@ -1,4 +1,4 @@
-/* 来自 middleware_arena_front_demo 的视觉设计，适配 Vue + Element Plus 项目
+/* 实验工作台视觉设计，适配 Vue + Element Plus 项目
    去除 body reset / font 字体（用 Element Plus 默认）
    保留所有 CSS 变量、卡片、侧栏、metric 大数字卡等 */
 :root {
@@ -101,21 +101,11 @@
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 0 24px;
   position: sticky;
   top: 0;
   z-index: 20;
-}
-.search {
-  width: min(460px, 46vw);
-  height: 40px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 0 14px;
-  background: #fafbfe;
-  font-size: 14px;
-  outline: none;
 }
 .top-actions {
   display: flex;
@@ -421,26 +411,6 @@
   height: 100%;
   background: linear-gradient(90deg, var(--primary), var(--primary2));
   transition: width 0.35s;
-}
-
-/* ===== Post (社区) ===== */
-.post {
-  padding: 18px;
-}
-.post h3 {
-  margin: 12px 0 8px;
-}
-.post p {
-  color: #59657a;
-  line-height: 1.7;
-}
-.post-actions {
-  display: flex;
-  gap: 16px;
-  border-top: 1px solid var(--line);
-  margin-top: 12px;
-  padding-top: 12px;
-  color: #68758b;
 }
 
 /* ===== 表格 ===== */

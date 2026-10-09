@@ -1,6 +1,6 @@
 # Middleware Arena Frontend
 
-基于 Vue 3 + TypeScript + Element Plus 构建的中间件竞技场前端。
+基于 Vue 3 + TypeScript + Element Plus 构建的中间件学习实验工作台，聚焦实验模板、代码编辑、压测任务和 AI 分析。当前不提供社区功能。
 
 ## 启动方式
 
@@ -26,13 +26,11 @@ npm run build
 - Axios 1.7
 - Monaco Editor 0.50
 
-## TODO
+## 功能
 
-- [ ] 登录态校验（双 token 接入，路由守卫中实现）
-- [ ] LoginView 对接 auth.ts 的 login 请求
-- [ ] User store 双 token 刷新流程
-- [ ] 请求拦截器注入 AccessToken
-- [ ] 响应拦截器 401 自动 refresh token 重放
-- [ ] MainLayout 菜单项完善
-- [ ] HomeView 首页内容
-- [ ] Monaco Editor 编辑器组件引入
+- 登录注册、双 Token 刷新与账号管理。
+- 内置实验场景、Monaco 源码编辑、版本历史与 Diff。
+- 压测任务创建、取消、重试、状态和阶段监控。
+- Agent 资源建议、性能分析与实验完成通知。
+
+开发服务器将 `/api/**` 代理到 `http://localhost:8000`。服务启动和实验依赖见仓库根目录的 [README](../README.md)。

@@ -55,6 +55,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # ========== 运行期 / 适配器本地状态 ==========
+.runner/
 logs/
 *.log
 adapters/codex/notify_debug.log
@@ -63,6 +64,15 @@ adapters/codex/forward_target.json
 
 # ========== 一次性工作产物（bug 扫描报告等，不入库） ==========
 bugs-scan-*.md
+
+# JMeter 运行结果（保留 .jmx 测试计划）
+/like-aggregate.csv
+/like-results.xml
+/like-summary.csv
+/jmeter/*.jtl
+/jmeter/*-aggregate.csv
+/jmeter/*-results.xml
+/jmeter/*-summary.csv
 
 # ========== 编辑器 / IDE ==========
 .idea/

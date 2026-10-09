@@ -11,15 +11,15 @@ runParams:
   warmup: 15s
   timeout: 3s
 files:
-  - path: middleware-arena-order/order.biz/src/main/java/com/mware/order/biz/impl/OrderServiceImpl.java
+  - path: middleware-arena-lab-order/order.biz/src/main/java/com/mware/order/biz/impl/OrderServiceImpl.java
     language: java
     editable: true
-  - path: middleware-arena-order/order.config/src/main/java/com/mware/order/config/redis/RedisConfig.java
+  - path: middleware-arena-lab-order/order.config/src/main/java/com/mware/order/config/redis/RedisConfig.java
     language: java
     editable: true
-  - path: middleware-arena-order/order.config/src/main/java/com/mware/order/config/cache/OrderCacheConfig.java
+  - path: middleware-arena-lab-order/order.config/src/main/java/com/mware/order/config/cache/OrderCacheConfig.java
     language: java
     editable: true
-  - path: middleware-arena-order/order.web/src/main/resources/application.yml
+  - path: middleware-arena-lab-order/order.web/src/main/resources/application.yml
     language: yaml
     editable: true

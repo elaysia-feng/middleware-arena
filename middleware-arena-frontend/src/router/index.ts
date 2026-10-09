@@ -12,7 +12,7 @@ declare module 'vue-router' {
   }
 }
 
-// 主菜单对应的 7 个 demo 视图 + 保留的 auth/community/account/notification 子路由
+// 中间件实验工作台，以及登录、账号和实验通知路由
 const routes: RouteRecordRaw[] = [
   {
     path: '/login',
@@ -92,38 +92,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/ReportView.vue'),
         meta: { title: 'AI 分析' },
       },
-      // 7. 实验社区
-      {
-        path: 'community',
-        name: 'CommunityList',
-        component: () => import('@/views/CommunityListView.vue'),
-        meta: { title: '实验社区' },
-      },
-      {
-        path: 'community/post/create',
-        name: 'PostCreate',
-        component: () => import('@/views/PostEditorView.vue'),
-        meta: { title: '发布帖子', hideInMenu: true },
-      },
-      {
-        path: 'community/post/edit/:postId',
-        name: 'PostEdit',
-        component: () => import('@/views/PostEditorView.vue'),
-        meta: { title: '编辑帖子', hideInMenu: true },
-      },
-      {
-        path: 'community/post/:postId',
-        name: 'PostDetail',
-        component: () => import('@/views/PostDetailView.vue'),
-        meta: { title: '帖子详情', hideInMenu: true },
-      },
-      {
-        path: 'community/user/:userId',
-        name: 'UserProfile',
-        component: () => import('@/views/UserProfileView.vue'),
-        meta: { title: '用户主页', hideInMenu: true },
-      },
-      // 消息中心 / 账号（不演示 demo 主菜单，靠顶栏铃铛 / avatar 进入）
+      // 消息中心 / 账号，通过顶栏进入
       {
         path: 'notification',
         name: 'NotificationList',

@@ -26,7 +26,6 @@
 
     <main class="main">
       <header class="topbar">
-        <input class="search" placeholder="搜索实验、场景、用户" v-model="searchInput" />
         <div class="top-actions">
           <button class="btn primary" @click="$router.push('/scenes/new')">＋ 新建实验</button>
           <NotificationBell />
@@ -42,14 +41,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
 import NotificationBell from '@/components/NotificationBell.vue'
 import { useUserStore } from '@/stores/user'
 import { useNotificationStore } from '@/stores/notification'
 
 const route = useRoute()
-const router = useRouter()
 const userStore = useUserStore()
 const notificationStore = useNotificationStore()
 
@@ -66,10 +64,7 @@ const menuItems: MenuItem[] = [
   { path: '/tasks', title: '压测任务', icon: '▣' },
   { path: '/monitor', title: '性能监控', icon: '⌁' },
   { path: '/report', title: 'AI 分析', icon: '✦' },
-  { path: '/community', title: '实验社区', icon: '◉' },
 ]
-
-const searchInput = ref('')
 
 function isActive(path: string) {
   // 选中态：精确匹配 /，前缀匹配其他

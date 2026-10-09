@@ -6,7 +6,7 @@
 
 - 默认宿主：`middleware-arena-community`
 - 已验证链路：Redis Stream Outbox → RabbitMQ → 点赞/收藏 MySQL 持久化
-- 可替换宿主：`middleware-arena-order` 的同步/异步下单场景
+- 可替换宿主：`middleware-arena-lab-order` 的同步/异步下单场景
 - 基线组：请求线程同步写数据库
 - 实验组：请求写可靠事件后立即返回，消费者异步落库
 

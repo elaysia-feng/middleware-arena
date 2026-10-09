@@ -4,7 +4,7 @@
 
 ## 宿主与接口
 
-- 宿主：`middleware-arena-order`
+- 宿主：`middleware-arena-lab-order`
 - 接口：`GET /order/{orderId}`
 - 基线组：关闭本地缓存和 Redis，直接读取 MySQL
 - 实验组：本地 Caffeine → Redis → MySQL，Redis 故障时 Fail-open 回源 MySQL

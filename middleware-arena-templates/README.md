@@ -12,9 +12,9 @@
 
 | 目录 | 中间件 | 场景 | 宿主服务 |
 |---|---|---|---|
-| `redis/` | Redis | 订单详情 Cache-Aside | order-service |
-| `rabbitmq/` | RabbitMQ | 同步处理与异步削峰 | community-service / order-service |
-| `seata/` | Seata AT | 下单、扣库存、扣余额一致性 | order/storage/account-service |
+| `redis/` | Redis | 订单详情 Cache-Aside | lab-order-service |
+| `rabbitmq/` | RabbitMQ | 同步处理与异步削峰 | community-service / lab-order-service |
+| `seata/` | Seata AT | 下单、扣库存、扣余额一致性 | lab-order-service / lab-seata-storage-participant / lab-seata-account-participant |
 | `elasticsearch/` | Elasticsearch | MySQL LIKE 与全文索引搜索 | community-service |
 | `community-interaction/` | Redis + RabbitMQ | 点赞/收藏可靠异步持久化 | community-service |
 

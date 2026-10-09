@@ -284,7 +284,15 @@ public class SutBuilderImpl implements SutBuilder {
         if (path.getNameCount() < 2) {
             throw new IllegalArgumentException("版本文件路径缺少宿主工程目录: " + rawPath);
         }
-        return path.toString();
+        // 历史版本快照仍可能使用重命名前的宿主目录，只迁移路径，不修改版本源码。
+        String hostDirectory = switch (path.getName(0).toString()) {
+            case "middleware-arena-order" -> "middleware-arena-lab-order";
+            case "middleware-arena-product" -> "middleware-arena-lab-product";
+            case "middleware-arena-storage" -> "middleware-arena-lab-seata-storage";
+            case "middleware-arena-account" -> "middleware-arena-lab-seata-account";
+            default -> path.getName(0).toString();
+        };
+        return Path.of(hostDirectory).resolve(path.subpath(1, path.getNameCount())).toString();
     }
 
     private void copyTree(Path source, Path target) throws IOException {

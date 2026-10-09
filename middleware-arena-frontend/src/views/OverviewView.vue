@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1>实验总览</h1>
-        <div class="muted">统一查看实验状态、系统资源与社区动态</div>
+        <div class="muted">查看中间件实验状态、压测任务与性能分析</div>
       </div>
       <button class="btn primary" :disabled="running" @click="runExperiment">
         {{ running ? '运行中…' : '再次运行' }}
@@ -28,7 +28,7 @@
         <button class="btn soft" @click="$router.push(`/scenes/${heroTemplate.id}/edit`)">修改代码</button>
       </div>
       <div class="resource-row">
-        <div class="resource"><strong>order-service</strong><span>512MB</span></div>
+        <div class="resource"><strong>lab-order-service</strong><span>512MB</span></div>
         <div class="resource"><strong>Redis</strong><span>128MB</span></div>
         <div class="resource"><strong>MySQL</strong><span>768MB</span></div>
         <div class="resource"><strong>RabbitMQ</strong><span>512MB</span></div>

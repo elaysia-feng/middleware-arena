@@ -1,6 +1,6 @@
 # Seata AT 分布式事务实验
 
-调用链：order-service 创建订单 → storage-service 扣库存 → account-service 扣余额。
+调用链：lab-order-service 创建订单 → lab-seata-storage-participant 扣库存 → lab-seata-account-participant 扣余额。
 
 ## 对照组
 

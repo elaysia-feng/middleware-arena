@@ -39,6 +39,8 @@ class MetricsCollectorImplTest {
                 "ma-task-1001-mysql", "5.00%|1GiB / 2GiB",
                 "ma-task-1001-redis", "0.50%|512KiB / 256MiB");
         RunnerProperties properties = new RunnerProperties();
+        // 此用例模拟每个任务独立的 MySQL / Redis 容器。
+        properties.getSharedServices().setEnabled(false);
         properties.getK6().setWorkDir(workDir.toString());
         ObjectMapper objectMapper = new ObjectMapper();
         MetricsCollectorImpl collector = new MetricsCollectorImpl(

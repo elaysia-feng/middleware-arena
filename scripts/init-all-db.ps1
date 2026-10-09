@@ -17,10 +17,10 @@ CREATE DATABASE IF NOT EXISTS ma_community_ds1   DEFAULT CHARACTER SET utf8mb4;
 Write-Host "=== 2. 跑 init.sql ===" -ForegroundColor Cyan
 # 共享库 middleware_arena：auth / product / order / storage / account / experiment / notification
 & $mysql middleware_arena < "$root\middleware-arena-auth\sql\init.sql"
-& $mysql middleware_arena < "$root\middleware-arena-product\sql\init.sql"
-& $mysql middleware_arena < "$root\middleware-arena-order\sql\init.sql"
-& $mysql middleware_arena < "$root\middleware-arena-storage\sql\init.sql"
-& $mysql middleware_arena < "$root\middleware-arena-account\sql\init.sql"
+& $mysql middleware_arena < "$root\middleware-arena-lab-product\sql\init.sql"
+& $mysql middleware_arena < "$root\middleware-arena-lab-order\sql\init.sql"
+& $mysql middleware_arena < "$root\middleware-arena-lab-seata-storage\sql\init.sql"
+& $mysql middleware_arena < "$root\middleware-arena-lab-seata-account\sql\init.sql"
 & $mysql middleware_arena < "$root\middleware-arena-experiment\sql\init.sql"
 & $mysql middleware_arena < "$root\middleware-arena-notification\sql\init.sql"
 
